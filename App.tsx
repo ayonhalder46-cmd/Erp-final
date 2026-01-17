@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { Dashboard } from './components/Dashboard';
 import { Inventory } from './components/Inventory';
@@ -20,8 +20,6 @@ import { INITIAL_PRODUCTS, INITIAL_CUSTOMERS, INITIAL_SUPPLIERS, INITIAL_EXPENSE
 import { ApiService } from './components/apiService';
 import { Lock, Unlock } from 'lucide-react';
 
-const MAX_HISTORY = 50;
-
 function App() {
   const [currentView, setCurrentView] = useState<ViewState>('dashboard');
   const [theme, setTheme] = useState<'light' | 'dark'>(() => 
@@ -38,13 +36,17 @@ function App() {
   const [logs, setLogs] = useState<AuditLog[]>([]);
   
   // System State
-  const [history, setHistory] = useState<string[]>([]);
-  const [historyPointer, setHistoryPointer] = useState(-1);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('synced');
   const [isInitialized, setIsInitialized] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+
+  // Refs for State Access in Async Closures (Fixes Stale Closure Issues)
+  const productsRef = useRef(products);
+  const salesRef = useRef(sales);
+  const customersRef = useRef(customers);
+  const returnsRef = useRef(returns);
 
   // Security & Profile State
   const [pin, setPin] = useState('');
@@ -67,9 +69,20 @@ function App() {
       details,
       type
     };
-    setLogs(prev => [newLog, ...prev].slice(0, 100)); // Keep last 100 logs in memory
-    ApiService.pushUpdate('logs', [newLog, ...logs].slice(0, 100));
-  }, [logs, isResetting]);
+    setLogs(prev => {
+        const updatedLogs = [newLog, ...prev].slice(0, 100);
+        ApiService.pushUpdate('logs', updatedLogs);
+        return updatedLogs;
+    });
+  }, [isResetting]);
+
+  useEffect(() => {
+    // Keep refs synced with state
+    productsRef.current = products;
+    salesRef.current = sales;
+    customersRef.current = customers;
+    returnsRef.current = returns;
+  }, [products, sales, customers, returns]);
 
   useEffect(() => {
     // Network listeners
@@ -167,245 +180,307 @@ function App() {
     window.location.reload();
   };
 
-  // Generic Update Handler
-  const updateData = async <T,>(
-    setter: React.Dispatch<React.SetStateAction<T[]>>, 
-    entity: string, 
-    newData: T[]
-  ) => {
-    setter(newData);
-    await ApiService.pushUpdate(entity, newData);
-    setSyncStatus('synced');
-  };
-
-  // --- Handlers ---
+  // --- Handlers with Functional State Updates to Prevent Stale Closures ---
 
   const handleAddProduct = (product: Product) => {
-    const updated = [...products, product];
-    updateData(setProducts, 'products', updated);
+    setProducts(prev => {
+        const updated = [...prev, product];
+        ApiService.pushUpdate('products', updated);
+        return updated;
+    });
     logAction('Create Product', 'Inventory', `Added SKU: ${product.sku}`, 'create');
   };
 
   const handleUpdateProduct = (product: Product) => {
-    const updated = products.map(p => p.id === product.id ? product : p);
-    updateData(setProducts, 'products', updated);
+    setProducts(prev => {
+        const updated = prev.map(p => p.id === product.id ? product : p);
+        ApiService.pushUpdate('products', updated);
+        return updated;
+    });
     logAction('Update Product', 'Inventory', `Updated SKU: ${product.sku}`);
   };
 
   const handleDeleteProduct = (id: string) => {
-    const p = products.find(i => i.id === id);
-    const updated = products.filter(p => p.id !== id);
-    updateData(setProducts, 'products', updated);
-    logAction('Delete Product', 'Inventory', `Removed SKU: ${p?.sku}`, 'delete');
+    setProducts(prev => {
+        const p = prev.find(i => i.id === id);
+        const updated = prev.filter(p => p.id !== id);
+        ApiService.pushUpdate('products', updated);
+        if(p) logAction('Delete Product', 'Inventory', `Removed SKU: ${p.sku}`, 'delete');
+        return updated;
+    });
   };
 
   const handleAddSale = (sale: Sale) => {
-    const updatedSales = [sale, ...sales];
-    updateData(setSales, 'sales', updatedSales);
+    setSales(prev => {
+        const updatedSales = [sale, ...prev];
+        ApiService.pushUpdate('sales', updatedSales);
+        return updatedSales;
+    });
     
-    // Update inventory
-    const updatedProducts = [...products];
-    sale.items.forEach(item => {
-      const productIndex = updatedProducts.findIndex(p => p.id === item.productId);
-      if (productIndex > -1) {
-        const product = { ...updatedProducts[productIndex] };
-        
-        if (product.hasVariants && item.variantId) {
-           const variantIndex = product.variants?.findIndex(v => v.id === item.variantId);
-           if (variantIndex !== undefined && variantIndex > -1 && product.variants) {
-             const variants = [...product.variants];
-             variants[variantIndex] = { ...variants[variantIndex], stockLevel: variants[variantIndex].stockLevel - item.quantity };
-             product.variants = variants;
-           }
-        } else {
-           product.stockLevel -= item.quantity;
-        }
-        updatedProducts[productIndex] = product;
-      }
+    setProducts(prev => {
+        const updatedProducts = [...prev];
+        sale.items.forEach(item => {
+          const productIndex = updatedProducts.findIndex(p => p.id === item.productId);
+          if (productIndex > -1) {
+            const product = { ...updatedProducts[productIndex] };
+            if (product.hasVariants && item.variantId) {
+               const variantIndex = product.variants?.findIndex(v => v.id === item.variantId);
+               if (variantIndex !== undefined && variantIndex > -1 && product.variants) {
+                 const variants = [...product.variants];
+                 variants[variantIndex] = { ...variants[variantIndex], stockLevel: variants[variantIndex].stockLevel - item.quantity };
+                 product.variants = variants;
+               }
+            } else {
+               product.stockLevel -= item.quantity;
+            }
+            updatedProducts[productIndex] = product;
+          }
+        });
+        ApiService.pushUpdate('products', updatedProducts);
+        return updatedProducts;
     });
-    updateData(setProducts, 'products', updatedProducts);
 
-    // Update Customer LTV
-    const updatedCustomers = customers.map(c => {
-      if (c.id === sale.customerId) {
-        return { 
-          ...c, 
-          totalSpent: c.totalSpent + sale.totalAmount,
-          lastPurchaseDate: sale.date 
-        };
-      }
-      return c;
+    setCustomers(prev => {
+        const updatedCustomers = prev.map(c => {
+          if (c.id === sale.customerId) {
+            return { 
+              ...c, 
+              totalSpent: c.totalSpent + sale.totalAmount,
+              lastPurchaseDate: sale.date 
+            };
+          }
+          return c;
+        });
+        ApiService.pushUpdate('customers', updatedCustomers);
+        return updatedCustomers;
     });
-    updateData(setCustomers, 'customers', updatedCustomers);
     
     logAction('Create Order', 'Sales', `Processed Order #${sale.id.slice(-6)}`, 'create');
   };
 
   const handleUpdateSale = (updatedSale: Sale) => {
-    // Note: This logic assumes simple status update, not changing items
-    // Reverting stock logic is complex and usually requires a void/return flow
-    const updatedSales = sales.map(s => s.id === updatedSale.id ? updatedSale : s);
-    updateData(setSales, 'sales', updatedSales);
+    setSales(prev => {
+        const updatedSales = prev.map(s => s.id === updatedSale.id ? updatedSale : s);
+        ApiService.pushUpdate('sales', updatedSales);
+        return updatedSales;
+    });
     logAction('Update Order', 'Sales', `Updated Status #${updatedSale.id.slice(-6)} to ${updatedSale.status}`);
   };
 
   const handleDeleteSale = (id: string) => {
-    const sale = sales.find(s => s.id === id);
+    // Access latest sales from ref to avoid stale closure if multiple ops happen quickly
+    const sale = salesRef.current.find(s => s.id === id);
     if (!sale) return;
 
-    // Restore Inventory
-    const updatedProducts = [...products];
-    if (sale.status !== 'Cancelled') {
-      sale.items.forEach(item => {
-        const productIndex = updatedProducts.findIndex(p => p.id === item.productId);
-        if (productIndex > -1) {
-          const product = { ...updatedProducts[productIndex] };
-          if (product.hasVariants && item.variantId) {
-             const variantIndex = product.variants?.findIndex(v => v.id === item.variantId);
-             if (variantIndex !== undefined && variantIndex > -1 && product.variants) {
-               const variants = [...product.variants];
-               variants[variantIndex] = { ...variants[variantIndex], stockLevel: variants[variantIndex].stockLevel + item.quantity };
-               product.variants = variants;
-             }
-          } else {
-             product.stockLevel += item.quantity;
-          }
-          updatedProducts[productIndex] = product;
+    setProducts(prev => {
+        const updatedProducts = [...prev];
+        if (sale.status !== 'Cancelled') {
+          sale.items.forEach(item => {
+            const productIndex = updatedProducts.findIndex(p => p.id === item.productId);
+            if (productIndex > -1) {
+              const product = { ...updatedProducts[productIndex] };
+              if (product.hasVariants && item.variantId) {
+                 const variantIndex = product.variants?.findIndex(v => v.id === item.variantId);
+                 if (variantIndex !== undefined && variantIndex > -1 && product.variants) {
+                   const variants = [...product.variants];
+                   variants[variantIndex] = { ...variants[variantIndex], stockLevel: variants[variantIndex].stockLevel + item.quantity };
+                   product.variants = variants;
+                 }
+              } else {
+                 product.stockLevel += item.quantity;
+              }
+              updatedProducts[productIndex] = product;
+            }
+          });
         }
-      });
-      updateData(setProducts, 'products', updatedProducts);
-    }
-
-    const updatedSales = sales.filter(s => s.id !== id);
-    updateData(setSales, 'sales', updatedSales);
-    
-    // Revert Customer LTV
-    const updatedCustomers = customers.map(c => {
-      if (c.id === sale.customerId) {
-        return { ...c, totalSpent: c.totalSpent - sale.totalAmount };
-      }
-      return c;
+        ApiService.pushUpdate('products', updatedProducts);
+        return updatedProducts;
     });
-    updateData(setCustomers, 'customers', updatedCustomers);
+
+    setSales(prev => {
+        const updatedSales = prev.filter(s => s.id !== id);
+        ApiService.pushUpdate('sales', updatedSales);
+        return updatedSales;
+    });
+    
+    setCustomers(prev => {
+        const updatedCustomers = prev.map(c => {
+          if (c.id === sale.customerId) {
+            return { ...c, totalSpent: c.totalSpent - sale.totalAmount };
+          }
+          return c;
+        });
+        ApiService.pushUpdate('customers', updatedCustomers);
+        return updatedCustomers;
+    });
 
     logAction('Delete Order', 'Sales', `Voided Order #${sale.id.slice(-6)}`, 'delete');
   };
 
   const handleAddCustomer = (customer: Customer) => {
-    const updated = [customer, ...customers];
-    updateData(setCustomers, 'customers', updated);
+    setCustomers(prev => {
+        const updated = [customer, ...prev];
+        ApiService.pushUpdate('customers', updated);
+        return updated;
+    });
     logAction('Add Client', 'CRM', `Registered ${customer.name}`, 'create');
   };
 
   const handleUpdateCustomer = (customer: Customer) => {
-    const updated = customers.map(c => c.id === customer.id ? customer : c);
-    updateData(setCustomers, 'customers', updated);
+    setCustomers(prev => {
+        const updated = prev.map(c => c.id === customer.id ? customer : c);
+        ApiService.pushUpdate('customers', updated);
+        return updated;
+    });
     logAction('Update Client', 'CRM', `Modified profile: ${customer.name}`);
   };
 
   const handleDeleteCustomer = (id: string) => {
-    const c = customers.find(x => x.id === id);
-    const updated = customers.filter(c => c.id !== id);
-    updateData(setCustomers, 'customers', updated);
-    logAction('Delete Client', 'CRM', `Removed profile: ${c?.name}`, 'delete');
+    setCustomers(prev => {
+        const c = prev.find(x => x.id === id);
+        const updated = prev.filter(cust => cust.id !== id);
+        ApiService.pushUpdate('customers', updated);
+        if(c) logAction('Delete Client', 'CRM', `Removed profile: ${c.name}`, 'delete');
+        return updated;
+    });
   };
 
   const handleAddSupplier = (supplier: Supplier) => {
-    const updated = [supplier, ...suppliers];
-    updateData(setSuppliers, 'suppliers', updated);
+    setSuppliers(prev => {
+        const updated = [supplier, ...prev];
+        ApiService.pushUpdate('suppliers', updated);
+        return updated;
+    });
     logAction('Add Supplier', 'SCM', `Registered ${supplier.name}`, 'create');
   };
 
   const handleUpdateSupplier = (supplier: Supplier) => {
-    const updated = suppliers.map(s => s.id === supplier.id ? supplier : s);
-    updateData(setSuppliers, 'suppliers', updated);
+    setSuppliers(prev => {
+        const updated = prev.map(s => s.id === supplier.id ? supplier : s);
+        ApiService.pushUpdate('suppliers', updated);
+        return updated;
+    });
     logAction('Update Supplier', 'SCM', `Modified: ${supplier.name}`);
   };
 
   const handleDeleteSupplier = (id: string) => {
-    const s = suppliers.find(x => x.id === id);
-    const updated = suppliers.filter(s => s.id !== id);
-    updateData(setSuppliers, 'suppliers', updated);
-    logAction('Delete Supplier', 'SCM', `Removed: ${s?.name}`, 'delete');
+    setSuppliers(prev => {
+        const s = prev.find(x => x.id === id);
+        const updated = prev.filter(sup => sup.id !== id);
+        ApiService.pushUpdate('suppliers', updated);
+        if(s) logAction('Delete Supplier', 'SCM', `Removed: ${s.name}`, 'delete');
+        return updated;
+    });
   };
 
   const handleAddExpense = (expense: Expense) => {
-    const updated = [expense, ...expenses];
-    updateData(setExpenses, 'expenses', updated);
+    setExpenses(prev => {
+        const updated = [expense, ...prev];
+        ApiService.pushUpdate('expenses', updated);
+        return updated;
+    });
     logAction('Add Expense', 'Finance', `Logged ${expense.category}: ৳${expense.amount}`, 'create');
   };
 
   const handleUpdateExpense = (expense: Expense) => {
-    const updated = expenses.map(e => e.id === expense.id ? expense : e);
-    updateData(setExpenses, 'expenses', updated);
+    setExpenses(prev => {
+        const updated = prev.map(e => e.id === expense.id ? expense : e);
+        ApiService.pushUpdate('expenses', updated);
+        return updated;
+    });
   };
 
   const handleDeleteExpense = (id: string) => {
-    const updated = expenses.filter(e => e.id !== id);
-    updateData(setExpenses, 'expenses', updated);
+    setExpenses(prev => {
+        const updated = prev.filter(e => e.id !== id);
+        ApiService.pushUpdate('expenses', updated);
+        return updated;
+    });
     logAction('Delete Expense', 'Finance', `Removed record ID: ${id.slice(-4)}`, 'delete');
   };
 
   const handleAddReturn = (rma: Return) => {
-    const updatedReturns = [rma, ...returns];
-    updateData(setReturns, 'returns', updatedReturns);
+    setReturns(prev => {
+        const updatedReturns = [rma, ...prev];
+        ApiService.pushUpdate('returns', updatedReturns);
+        return updatedReturns;
+    });
     logAction('Create Return', 'RMA', `Opened Ticket for Order #${rma.orderId.slice(-6)}`, 'create');
   };
 
   const handleUpdateReturnStatus = (id: string, status: Return['status']) => {
-    const rmaIndex = returns.findIndex(r => r.id === id);
-    if (rmaIndex === -1) return;
-    const rma = returns[rmaIndex];
-
-    // Restock logic if approved
-    if (status === 'Approved' && rma.status !== 'Approved') {
-       // Only restock physical inventory if resellable
-       if (rma.condition === 'Resellable') {
-         const updatedProducts = [...products];
-         const productIndex = updatedProducts.findIndex(p => p.id === rma.productId);
-         if (productIndex > -1) {
-           const product = { ...updatedProducts[productIndex] };
-           if (product.hasVariants && rma.variantId) {
-              const vIndex = product.variants?.findIndex(v => v.id === rma.variantId);
-              if (vIndex !== undefined && vIndex > -1 && product.variants) {
-                 const variants = [...product.variants];
-                 variants[vIndex] = { ...variants[vIndex], stockLevel: variants[vIndex].stockLevel + rma.quantity };
-                 product.variants = variants;
-              }
-           } else {
-              product.stockLevel += rma.quantity;
-           }
-           updatedProducts[productIndex] = product;
-           updateData(setProducts, 'products', updatedProducts);
-         }
-       }
-       
-       // Deduct LTV from Customer Profile
-       const updatedCustomers = customers.map(c => {
-         if (c.name === rma.customerName) { // Simplified matching
-           return { ...c, totalSpent: c.totalSpent - rma.refundAmount };
-         }
-         return c;
-       });
-       updateData(setCustomers, 'customers', updatedCustomers);
-
-       // Annotate Original Sales Entry
-       const saleIndex = sales.findIndex(s => s.id === rma.orderId);
-       if (saleIndex > -1) {
-          const updatedSale = { ...sales[saleIndex] };
-          updatedSale.notes = updatedSale.notes 
-            ? `${updatedSale.notes} | Return Approved (RMA: ${rma.id.slice(-4)})` 
-            : `Return Approved (RMA: ${rma.id.slice(-4)})`;
-          
-          const newSales = [...sales];
-          newSales[saleIndex] = updatedSale;
-          updateData(setSales, 'sales', newSales);
-       }
+    // CRITICAL FIX: Use returnsRef to access the latest state inside the closure.
+    // This prevents the "stale closure" bug where the function execution sees an old version of 'returns'.
+    const rma = returnsRef.current.find(r => r.id === id);
+    
+    if (!rma) {
+        console.error("Critical: RMA not found in current state context", id);
+        return;
     }
 
-    const updatedReturns = [...returns];
-    updatedReturns[rmaIndex] = { ...rma, status };
-    updateData(setReturns, 'returns', updatedReturns);
+    if (status === 'Approved' && rma.status !== 'Approved') {
+       if (rma.condition === 'Resellable') {
+         setProducts(prev => {
+             const updatedProducts = [...prev];
+             const productIndex = updatedProducts.findIndex(p => p.id === rma.productId);
+             if (productIndex > -1) {
+               const product = { ...updatedProducts[productIndex] };
+               if (product.hasVariants && rma.variantId) {
+                  const vIndex = product.variants?.findIndex(v => v.id === rma.variantId);
+                  if (vIndex !== undefined && vIndex > -1 && product.variants) {
+                     const variants = [...product.variants];
+                     variants[vIndex] = { ...variants[vIndex], stockLevel: variants[vIndex].stockLevel + rma.quantity };
+                     product.variants = variants;
+                  }
+               } else {
+                  product.stockLevel += rma.quantity;
+               }
+               updatedProducts[productIndex] = product;
+             }
+             ApiService.pushUpdate('products', updatedProducts);
+             return updatedProducts;
+         });
+       }
+       
+       setCustomers(prev => {
+           const updatedCustomers = prev.map(c => {
+             // Using name match as fallback if ID mismatch, but strictly ID is better if consistent
+             // The logic was checking name in previous iteration, let's keep it but ideally use ID
+             if (c.name === rma.customerName) { 
+               return { ...c, totalSpent: c.totalSpent - rma.refundAmount };
+             }
+             return c;
+           });
+           ApiService.pushUpdate('customers', updatedCustomers);
+           return updatedCustomers;
+       });
+
+       setSales(prev => {
+           const saleIndex = prev.findIndex(s => s.id === rma.orderId);
+           if (saleIndex > -1) {
+              const updatedSale = { ...prev[saleIndex] };
+              updatedSale.notes = updatedSale.notes 
+                ? `${updatedSale.notes} | Return Approved (RMA: ${rma.id.slice(-4)})` 
+                : `Return Approved (RMA: ${rma.id.slice(-4)})`;
+              
+              const newSales = [...prev];
+              newSales[saleIndex] = updatedSale;
+              ApiService.pushUpdate('sales', newSales);
+              return newSales;
+           }
+           return prev;
+       });
+    }
+
+    setReturns(prev => {
+        const rmaIndex = prev.findIndex(r => r.id === id);
+        if (rmaIndex === -1) return prev;
+        const updatedReturns = [...prev];
+        updatedReturns[rmaIndex] = { ...updatedReturns[rmaIndex], status };
+        ApiService.pushUpdate('returns', updatedReturns);
+        return updatedReturns;
+    });
+    
     logAction('Update Return', 'RMA', `Set Ticket #${id.slice(-6)} to ${status}`);
   };
 

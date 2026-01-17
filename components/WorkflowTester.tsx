@@ -66,9 +66,9 @@ export const WorkflowTester: React.FC<WorkflowTesterProps> = ({
       // VERIFY PHASE 1
       const customers = await ApiService.fetchLatest('customers');
       const suppliers = await ApiService.fetchLatest('suppliers');
-      const custCheck = customers.find((c: Customer) => c.id === testIds.customer);
+      const custCheck = customers?.find((c: Customer) => c.id === testIds.customer);
       
-      if (custCheck && suppliers.find((s: Supplier) => s.id === testIds.supplier)) {
+      if (custCheck && suppliers?.find((s: Supplier) => s.id === testIds.supplier)) {
          addLog("1. CRM/SCM", "success", "Entities verified in Database", `Customer ID: ${custCheck.id}`);
       } else {
          throw new Error("Failed to persist Customer or Supplier");
@@ -87,8 +87,8 @@ export const WorkflowTester: React.FC<WorkflowTesterProps> = ({
       
       await wait(600);
       const products1 = await ApiService.fetchLatest('products');
-      const p1 = products1.find((p: Product) => p.id === testIds.product);
-      if (p1 && p1.variants[0].stockLevel === 10) {
+      const p1 = products1?.find((p: Product) => p.id === testIds.product);
+      if (p1?.variants?.[0]?.stockLevel === 10) {
         addLog("2. Inventory", "success", "Product created", "Stock verified at 10 units");
       } else {
         throw new Error("Product creation failed or stock mismatch");
@@ -109,16 +109,24 @@ export const WorkflowTester: React.FC<WorkflowTesterProps> = ({
       };
       onAddSale(testSale);
 
-      await wait(800);
+      await wait(1000); // Increased wait for processing
       
       // VERIFY PHASE 4 (Logic Check)
       const products2 = await ApiService.fetchLatest('products');
       const customers2 = await ApiService.fetchLatest('customers');
       
-      const p2 = products2.find((p: Product) => p.id === testIds.product);
-      const c2 = customers2.find((c: Customer) => c.id === testIds.customer);
+      const p2 = products2?.find((p: Product) => p.id === testIds.product);
+      const c2 = customers2?.find((c: Customer) => c.id === testIds.customer);
       
-      if (p2.variants[0].stockLevel !== 8) throw new Error(`Stock deduction failed. Expected 8, got ${p2.variants[0].stockLevel}`);
+      if (!p2) throw new Error("Product not found after sale (Possible deletion or fetch error)");
+      
+      // Safe access using optional chaining to prevent TypeError
+      const stockLevel = p2?.variants?.[0]?.stockLevel;
+      if (stockLevel !== 8) {
+        throw new Error(`Stock deduction failed. Expected 8, got ${stockLevel}`);
+      }
+      
+      if (!c2) throw new Error("Customer not found after sale");
       if (c2.totalSpent !== 2000) throw new Error(`Customer LTV update failed. Expected 2000, got ${c2.totalSpent}`);
       
       addLog("4. POS Logic", "success", "Transaction & Logic Verified", "Stock: 8 | Customer Spend: ৳2000");
@@ -127,22 +135,30 @@ export const WorkflowTester: React.FC<WorkflowTesterProps> = ({
       addLog("5. RMA Flow", "pending", "Returning 1 Unit (Expected Stock: 9)...");
       const testReturn: Return = {
         id: testIds.return, orderId: testIds.sale, productId: testProduct.id, variantId: testIds.variant1,
-        customerName: `Test Customer ${tid}`, productName: testProduct.name, quantity: 1, refundAmount: 1000,
+        customerName: `Test Customer ${tid}`, productName: testProduct.name, quantity: 1, refundAmount: 1000, unitCost: 500,
         reason: 'Changed Mind', condition: 'Resellable', status: 'Pending', date: new Date().toISOString()
       };
       onAddReturn(testReturn);
       await wait(300);
       onUpdateReturnStatus(testIds.return, 'Approved');
       
-      await wait(600);
+      await wait(800);
       
       // VERIFY PHASE 5
       const products3 = await ApiService.fetchLatest('products');
       const customers3 = await ApiService.fetchLatest('customers');
-      const p3 = products3.find((p: Product) => p.id === testIds.product);
-      const c3 = customers3.find((c: Customer) => c.id === testIds.customer);
+      const p3 = products3?.find((p: Product) => p.id === testIds.product);
+      const c3 = customers3?.find((c: Customer) => c.id === testIds.customer);
 
-      if (p3.variants[0].stockLevel !== 9) throw new Error(`Restock logic failed. Expected 9, got ${p3.variants[0].stockLevel}`);
+      if (!p3) throw new Error("Product not found after return");
+      
+      // Safe access
+      const restockedLevel = p3?.variants?.[0]?.stockLevel;
+      if (restockedLevel !== 9) {
+        throw new Error(`Restock logic failed. Expected 9, got ${restockedLevel}`);
+      }
+      
+      if (!c3) throw new Error("Customer not found after return");
       if (c3.totalSpent !== 1000) throw new Error(`Refund logic failed. Expected LTV 1000, got ${c3.totalSpent}`);
 
       addLog("5. RMA Flow", "success", "Restock & Refund Verified", "Stock: 9 | Customer Spend: ৳1000");
@@ -151,6 +167,7 @@ export const WorkflowTester: React.FC<WorkflowTesterProps> = ({
       addLog("COMPLETE", "success", "Full-Stack Diagnostic Passed", "Test data preserved in system for manual inspection.");
 
     } catch (e) {
+      console.error(e);
       addLog("CRITICAL FAILURE", "failure", "Logic Verification Failed", String(e));
     } finally {
       setIsRunning(false);
