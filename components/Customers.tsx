@@ -5,7 +5,7 @@ import { Mail, Phone, User, Calendar, Plus, X, Edit2, Trash2, Award, Undo2, Redo
 
 interface CustomersProps {
   customers: Customer[];
-  sales: Sale[]; // Added sales prop for history
+  sales: Sale[]; 
   onAdd: (c: Customer) => void;
   onUpdate: (c: Customer) => void;
   onDelete: (id: string) => void;
@@ -59,6 +59,17 @@ export const Customers: React.FC<CustomersProps> = ({
       case 'Gold': return 'text-amber-600 bg-amber-50 border-amber-100 dark:bg-amber-900/20 dark:border-amber-800 dark:text-amber-400';
       case 'Silver': return 'text-slate-500 bg-slate-50 border-slate-100 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400';
       default: return 'text-orange-600 bg-orange-50 border-orange-100 dark:bg-orange-900/20 dark:border-orange-800 dark:text-orange-400';
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch(status) {
+      case 'Confirmed': return 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/20';
+      case 'Delivered': return 'bg-green-100 text-green-700 border-green-200 dark:bg-green-500/10 dark:text-green-400 dark:border-green-500/20';
+      case 'Pending': return 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20';
+      case 'Returned': return 'bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-500/10 dark:text-purple-400 dark:border-purple-500/20';
+      case 'Cancelled': return 'bg-red-100 text-red-700 border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20';
+      default: return 'bg-slate-100 text-slate-700';
     }
   };
 
@@ -149,7 +160,7 @@ export const Customers: React.FC<CustomersProps> = ({
                 <h3 className="text-2xl font-serif font-bold text-slate-800 dark:text-white">{editingId ? 'Modify Partner Account' : 'Initialize Client Profile'}</h3>
                 <p className="text-slate-500 dark:text-slate-400 text-xs mt-1 font-medium">Logistics and CRM metadata configuration.</p>
               </div>
-              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600 bg-white dark:bg-slate-900 p-3 rounded-full shadow-sm"><X size={24}/></button>
+              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-white p-3 rounded-full transition-colors"><X size={24}/></button>
             </div>
             <form onSubmit={handleSubmit} className="p-10 space-y-8">
               <div className="space-y-2">
@@ -194,7 +205,7 @@ export const Customers: React.FC<CustomersProps> = ({
                 <h3 className="text-2xl font-serif font-bold text-slate-800 dark:text-white">Purchase History</h3>
                 <p className="text-slate-500 dark:text-slate-400 text-xs mt-1 font-medium">Record for {selectedCustomerForHistory.name}</p>
               </div>
-              <button onClick={() => setHistoryModalOpen(false)} className="text-slate-400 hover:text-slate-600 bg-white dark:bg-slate-900 p-3 rounded-full shadow-sm"><X size={24}/></button>
+              <button onClick={() => setHistoryModalOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-white p-3 rounded-full transition-colors"><X size={24}/></button>
             </div>
             
             <div className="p-8 overflow-y-auto custom-scrollbar flex-1">
@@ -209,10 +220,7 @@ export const Customers: React.FC<CustomersProps> = ({
                           <p className="font-bold text-slate-800 dark:text-white">Order #{sale.id.slice(-6)}</p>
                           <p className="text-xs text-slate-500">{new Date(sale.date).toLocaleDateString()}</p>
                         </div>
-                        <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${
-                          sale.status === 'Completed' ? 'bg-green-100 text-green-700' : 
-                          sale.status === 'Cancelled' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
-                        }`}>
+                        <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border ${getStatusColor(sale.status)}`}>
                           {sale.status}
                         </span>
                       </div>

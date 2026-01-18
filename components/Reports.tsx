@@ -1,8 +1,12 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Sale, Product, Customer, MonthlyReport, Expense, PeriodSummary, Return } from '../types';
-import { ApiService } from './apiService';
-import { Download, Calendar, Package, ClipboardList, Users, ShoppingBag, Receipt, TrendingUp, TrendingDown, FolderDown, Lock, ArrowRight, Wallet, History, RotateCcw } from 'lucide-react';
+import { 
+  Download, Calendar, Package, ClipboardList, Users, ShoppingBag, 
+  Receipt, TrendingUp, TrendingDown, FolderDown, Lock, ArrowRight, 
+  Wallet, PieChart, Activity, FileText, ArrowRightCircle
+} from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart as RePieChart, Pie } from 'recharts';
 
 interface ReportsProps {
   sales: Sale[];
@@ -10,92 +14,70 @@ interface ReportsProps {
   customers: Customer[];
   expenses: Expense[];
   returns: Return[];
+  periodSummaries: PeriodSummary[];
+  onUpdateSummaries: (summaries: PeriodSummary[]) => void;
   theme: 'light' | 'dark';
 }
 
-export const Reports: React.FC<ReportsProps> = ({ sales, products, customers, expenses, returns, theme }) => {
+export const Reports: React.FC<ReportsProps> = ({ sales, products, customers, expenses, returns, periodSummaries, onUpdateSummaries, theme }) => {
   const currentMonthStr = new Date().toISOString().substring(0, 7);
   const [selectedMonth, setSelectedMonth] = useState(currentMonthStr);
-  const [periodSummaries, setPeriodSummaries] = useState<PeriodSummary[]>([]);
+  const [activeTab, setActiveTab] = useState<'overview' | 'statement' | 'ledger'>('overview');
 
-  // Load period summaries on mount
-  useEffect(() => {
-    ApiService.fetchLatest('period_summaries').then(data => {
-      if (data) setPeriodSummaries(data);
-    });
-  }, []);
+  // --- ACCOUNTING ENGINE ---
 
-  // Aggregation Logic
-  const allMonthlyData = useMemo(() => {
-    // 1. Process Sales
-    const data = sales.reduce((acc, sale) => {
-      const monthKey = sale.date.substring(0, 7);
-      if (!acc[monthKey]) {
-        acc[monthKey] = {
-          report: { month: monthKey, revenue: 0, orders: 0, profit: 0, topProduct: 'None' },
-          itemCounts: {} as Record<string, number>,
-          customers: new Set<string>()
-        };
-      }
-      
-      acc[monthKey].report.revenue += sale.totalAmount;
-      acc[monthKey].report.profit += sale.profit;
-      acc[monthKey].report.orders += 1;
-      acc[monthKey].customers.add(sale.customerName);
+  // 1. Sales Data (Confirmed & Delivered Orders Only) - Matching Sheet Logic
+  const monthlySales = useMemo(() => 
+    sales.filter(s => s.date.startsWith(selectedMonth) && (s.status === 'Confirmed' || s.status === 'Delivered')), 
+  [sales, selectedMonth]);
 
-      sale.items.forEach(item => {
-        acc[monthKey].itemCounts[item.productName] = (acc[monthKey].itemCounts[item.productName] || 0) + item.quantity;
-      });
+  // 2. Returns Data (Approved Only - Financial Impact)
+  const monthlyReturns = useMemo(() => 
+    returns.filter(r => r.date.startsWith(selectedMonth) && r.status === 'Approved'), 
+  [returns, selectedMonth]);
 
-      return acc;
-    }, {} as Record<string, { report: MonthlyReport, itemCounts: Record<string, number>, customers: Set<string> }>);
+  // 3. Operational Expenses (Paid Only)
+  const monthlyExpenses = useMemo(() => 
+    expenses.filter(e => e.date.startsWith(selectedMonth) && e.status === 'Paid'), 
+  [expenses, selectedMonth]);
 
-    // 2. Determine Top Products
-    Object.keys(data).forEach(m => {
-      let topProd = 'None';
-      let maxQty = 0;
-      Object.entries(data[m].itemCounts).forEach(([name, qty]) => {
-        const numericQty = qty as number;
-        if (numericQty > maxQty) {
-          maxQty = numericQty;
-          topProd = name;
-        }
-      });
-      data[m].report.topProduct = topProd;
-    });
+  // --- P&L CALCULATIONS ---
 
-    return data;
-  }, [sales]);
+  // Revenue
+  const grossSales = monthlySales.reduce((acc, s) => acc + s.totalAmount, 0);
+  const salesReturns = monthlyReturns.reduce((acc, r) => acc + r.refundAmount, 0);
+  const netSales = grossSales - salesReturns;
 
-  const activeReport = allMonthlyData[selectedMonth];
-  const monthlyExpenses = expenses.filter(e => e.date.startsWith(selectedMonth) && e.status === 'Paid').reduce((acc, e) => acc + e.amount, 0);
-  
-  // Calculate Refunds for this month (Approved returns)
-  const monthlyRefunds = returns
-    .filter(r => r.date.startsWith(selectedMonth) && r.status === 'Approved')
-    .reduce((acc, r) => acc + r.refundAmount, 0);
-
-  // Calculate Asset Recovery (Recovered Cost for Resellable Returns)
-  const monthlyRecoveredCost = returns
-    .filter(r => r.date.startsWith(selectedMonth) && r.status === 'Approved' && r.condition === 'Resellable')
+  // Cost of Goods Sold (COGS)
+  // Calculate COGS from sales
+  const cogsSold = monthlySales.reduce((acc, s) => acc + s.totalCost, 0);
+  // Calculate value of returned goods (if resellable, we recoup the asset value)
+  const cogsReturned = monthlyReturns
+    .filter(r => r.condition === 'Resellable')
     .reduce((acc, r) => acc + ((r.unitCost || 0) * r.quantity), 0);
-
-  // Net Profit = (Sales Profit) - Expenses - Refunds + Recovered Inventory Value
-  // We add back the cost price of resellable items because we regained the asset.
-  const monthlyNetProfit = (activeReport?.report.profit || 0) - monthlyExpenses - monthlyRefunds + monthlyRecoveredCost;
   
-  // Net Revenue = Gross Sales - Refunds
-  const monthlyNetRevenue = (activeReport?.report.revenue || 0) - monthlyRefunds;
+  const netCOGS = cogsSold - cogsReturned;
 
-  // Inventory Valuation (Current Snapshot)
-  const currentInventoryValue = products.reduce((acc, p) => {
-    if (p.hasVariants && p.variants) {
-      return acc + p.variants.reduce((vAcc, v) => vAcc + (v.stockLevel * v.costPrice), 0);
-    }
-    return acc + (p.stockLevel * p.costPrice);
+  // Gross Profit
+  const grossProfit = netSales - netCOGS;
+  const grossMarginPercent = netSales > 0 ? (grossProfit / netSales) * 100 : 0;
+
+  // Operating Expenses (OpEx)
+  const totalOpEx = monthlyExpenses.reduce((acc, e) => acc + e.amount, 0);
+
+  // Net Profit
+  const netOperatingProfit = grossProfit - totalOpEx;
+  const netProfitMargin = netSales > 0 ? (netOperatingProfit / netSales) * 100 : 0;
+
+  // Inventory Snapshot (Current State)
+  // Note: For historical months, this is ideally snapshot in periodSummaries.
+  // If not closed, we use current real-time inventory as best approximation.
+  const currentCalculatedInventoryValue = products.reduce((acc, p) => {
+    const stock = p.hasVariants ? p.variants?.reduce((sum, v) => sum + v.stockLevel, 0) : p.stockLevel;
+    return acc + ((stock || 0) * p.costPrice);
   }, 0);
 
-  // Period Logic
+  // --- CARRY OVER LOGIC ---
   const previousMonthStr = useMemo(() => {
     const d = new Date(selectedMonth + "-01");
     d.setMonth(d.getMonth() - 1);
@@ -104,302 +86,399 @@ export const Reports: React.FC<ReportsProps> = ({ sales, products, customers, ex
 
   const prevSummary = periodSummaries.find(s => s.month === previousMonthStr);
   const currentSummary = periodSummaries.find(s => s.month === selectedMonth);
-
-  // Opening Inventory is either the previous month's closing OR 0 if no history
+  
+  // Logic: Opening Inventory of THIS month = Closing Inventory of LAST month
   const openingInventory = prevSummary ? prevSummary.closingInventoryValue : 0;
   
-  // Closing Inventory is the stored snapshot if closed, otherwise the live calculated value
-  const closingInventory = currentSummary ? currentSummary.closingInventoryValue : currentInventoryValue;
+  // Logic: Closing Inventory of THIS month = Snapshot if closed, else Current Inventory
+  const closingInventory = currentSummary ? currentSummary.closingInventoryValue : currentCalculatedInventoryValue;
 
-  // Handle Month-End Closing
-  const handleClosePeriod = async () => {
-    if (!confirm(`Are you sure you want to CLOSE the month of ${selectedMonth}? \n\n1. This creates a permanent financial snapshot.\n2. Current Inventory Value (৳${currentInventoryValue.toLocaleString()}) becomes Opening Inventory for next month.\n3. Net Profit (৳${monthlyNetProfit.toLocaleString()}) is finalized.`)) return;
+  // Logic: Opening Cash Balance of THIS month = Closing Balance of LAST month
+  const openingBalance = prevSummary ? prevSummary.closingBalance : 0;
+  
+  // Logic: Closing Balance = Opening Balance + Net Profit (for this period)
+  const closingBalance = openingBalance + netOperatingProfit;
 
-    const openingBal = prevSummary ? prevSummary.closingBalance : 0;
-    const closingBal = openingBal + monthlyNetProfit;
+  // Data for Expense Chart
+  const expenseCategories = useMemo(() => {
+    const cats: Record<string, number> = {};
+    monthlyExpenses.forEach(e => {
+      cats[e.category] = (cats[e.category] || 0) + e.amount;
+    });
+    return Object.entries(cats).map(([name, value]) => ({ name, value })).sort((a,b) => b.value - a.value);
+  }, [monthlyExpenses]);
+
+  const COLORS = ['#6366f1', '#ec4899', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6'];
+
+  const handleClosePeriod = () => {
+    if (!confirm(`CONFIRM PERIOD CLOSING: ${selectedMonth}\n\nThis action locks the financial snapshot and carries balances forward.\n\nNet Profit: ৳${netOperatingProfit.toLocaleString()}\nClosing Stock: ৳${closingInventory.toLocaleString()}\nClosing Cash: ৳${closingBalance.toLocaleString()}\n\nProceed?`)) return;
 
     const newSummary: PeriodSummary = {
       month: selectedMonth,
       openingInventoryValue: openingInventory,
-      closingInventoryValue: currentInventoryValue, // Snapshot current stock value
-      openingBalance: openingBal,
-      closingBalance: closingBal,
-      totalRevenue: monthlyNetRevenue,
-      totalExpenses: monthlyExpenses,
-      netProfit: monthlyNetProfit,
+      closingInventoryValue: closingInventory,
+      openingBalance: openingBalance,
+      closingBalance: closingBalance,
+      totalRevenue: netSales,
+      totalExpenses: totalOpEx,
+      netProfit: netOperatingProfit,
       closedAt: new Date().toISOString()
     };
 
     const updatedSummaries = [...periodSummaries.filter(s => s.month !== selectedMonth), newSummary];
+    onUpdateSummaries(updatedSummaries);
     
-    setPeriodSummaries(updatedSummaries);
-    await ApiService.pushUpdate('period_summaries', updatedSummaries);
-    handleDownloadAll();
-
+    // Auto-advance month to see the new "Opening" accounts
     const d = new Date(selectedMonth + "-01");
     d.setMonth(d.getMonth() + 1);
     setSelectedMonth(d.toISOString().slice(0, 7));
   };
 
-  const downloadCSV = (type: 'orders' | 'items' | 'inventory' | 'customers' | 'expenses' | 'returns', month: string) => {
+  const downloadCSV = (type: string) => {
     let headers: string[] = [];
     let rows: any[][] = [];
-    let filename = "";
+    let filename = `${type}_${selectedMonth}.csv`;
 
-    const formatCurrency = (val: number) => val.toFixed(2);
+    const fmt = (n: number) => n.toFixed(2);
 
-    if (type === 'orders') {
-      const monthSales = sales.filter(s => s.date.startsWith(month));
-      headers = ["Order ID", "Date", "Customer", "Total Revenue (BDT)", "Delivery Charge (BDT)", "Total Cost (BDT)", "Gross Profit (BDT)", "Status", "Item Count", "Notes"];
-      rows = monthSales.map(s => [
-        s.id, s.date, s.customerName, formatCurrency(s.totalAmount), formatCurrency(s.deliveryCharge || 0),
-        formatCurrency(s.totalCost), formatCurrency(s.profit), s.status, s.items.reduce((acc, i) => acc + i.quantity, 0), s.notes
-      ]);
-      filename = `Sales_${month}.csv`;
-    } else if (type === 'returns') {
-      const monthReturns = returns.filter(r => r.date.startsWith(month));
-      headers = ["RMA ID", "Order Ref", "Date", "Customer", "Product", "Refund Amount (BDT)", "Reason", "Condition", "Status"];
-      rows = monthReturns.map(r => [
-        r.id, r.orderId, r.date, r.customerName, r.productName, formatCurrency(r.refundAmount), r.reason, r.condition, r.status
-      ]);
-      filename = `Returns_${month}.csv`;
-    } else if (type === 'items') {
-      // ... existing items logic ...
-      const monthSales = sales.filter(s => s.date.startsWith(month));
-      const itemAgg: Record<string, { qty: number, rev: number, profit: number }> = {};
-      monthSales.forEach(s => s.items.forEach(i => {
-        if (!itemAgg[i.productName]) itemAgg[i.productName] = { qty: 0, rev: 0, profit: 0 };
-        itemAgg[i.productName].qty += i.quantity;
-        itemAgg[i.productName].rev += i.total;
-        itemAgg[i.productName].profit += (i.total - (i.unitCost * i.quantity));
-      }));
-      headers = ["Product Name", "Quantity Sold", "Gross Revenue (BDT)", "Estimated Profit (BDT)"];
-      rows = Object.entries(itemAgg).map(([name, data]) => [name, data.qty, formatCurrency(data.rev), formatCurrency(data.profit)]);
-      filename = `Items_${month}.csv`;
-    } else if (type === 'inventory') {
-      headers = ["SKU", "Product Name", "Category", "Stock Level", "Unit Cost (BDT)", "Total Asset Value (BDT)", "Report Period"];
-      rows = products.map(p => {
-        const stock = p.hasVariants ? p.variants?.reduce((sum, v) => sum + v.stockLevel, 0) : p.stockLevel;
-        return [p.sku, p.name, p.category, stock, formatCurrency(p.costPrice), formatCurrency((stock || 0) * p.costPrice), month];
-      });
-      filename = `Inventory_Closing_${month}.csv`;
-    } else if (type === 'customers') {
-      headers = ["ID", "Name", "Phone", "Address", "Tier", "Total Spent", "Last Purchase"];
-      rows = customers.map(c => [c.id, c.name, c.phone, c.address, c.tier, formatCurrency(c.totalSpent), c.lastPurchaseDate]);
-      filename = `Customers_${new Date().toISOString().split('T')[0]}.csv`;
-    } else if (type === 'expenses') {
-      const monthExpenses = expenses.filter(e => e.date.startsWith(month));
-      headers = ["ID", "Date", "Category", "Description", "Amount (BDT)", "Payment Method", "Status"];
-      rows = monthExpenses.map(e => [e.id, e.date, e.category, e.description, formatCurrency(e.amount), e.paymentMethod, e.status]);
-      filename = `Expenses_${month}.csv`;
+    if (type === 'P&L_Statement') {
+        headers = ["Line Item", "Amount (BDT)", "Note"];
+        rows = [
+            ["Gross Sales Revenue", fmt(grossSales), "Total value of completed orders"],
+            ["Less: Returns & Refunds", fmt(-salesReturns), "Approved returns"],
+            ["NET SALES", fmt(netSales), ""],
+            ["", "", ""],
+            ["Cost of Goods Sold (COGS)", fmt(netCOGS), "Product cost of net sales"],
+            ["GROSS PROFIT", fmt(grossProfit), "Net Sales - COGS"],
+            ["", "", ""],
+            ["Operating Expenses", fmt(totalOpEx), "See expense ledger for breakdown"],
+            ["NET OPERATING PROFIT", fmt(netOperatingProfit), "Gross Profit - OpEx"],
+            ["", "", ""],
+            ["Opening Cash Balance", fmt(openingBalance), `Carried from ${previousMonthStr}`],
+            ["Closing Cash Balance", fmt(closingBalance), "Opening + Net Profit"]
+        ];
+    } else if (type === 'Ledger') {
+        headers = ["Date", "Type", "Ref ID", "Description", "Inflow (BDT)", "Outflow (BDT)"];
+        // Combine Sales and Expenses into one chronological ledger
+        const ledgerItems = [
+            ...monthlySales.map(s => ({ date: s.date, type: 'Sale', id: s.id, desc: s.customerName, in: s.totalAmount, out: 0 })),
+            ...monthlyExpenses.map(e => ({ date: e.date, type: 'Expense', id: e.id, desc: `${e.category} - ${e.description}`, in: 0, out: e.amount })),
+            ...monthlyReturns.map(r => ({ date: r.date, type: 'Refund', id: r.id, desc: `RMA for ${r.customerName}`, in: 0, out: r.refundAmount }))
+        ].sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        
+        rows = ledgerItems.map(i => [i.date, i.type, i.id, i.desc, fmt(i.in), fmt(i.out)]);
     }
 
-    const formatField = (field: any) => {
-      const str = String(field);
-      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
-        return `"${str.replace(/"/g, '""')}"`;
-      }
-      return str;
-    };
-
-    const csvContent = "\uFEFF" + [headers, ...rows].map(e => e.map(formatField).join(",")).join("\n");
+    const csvContent = "\uFEFF" + [headers, ...rows].map(e => e.map(f => `"${String(f).replace(/"/g, '""')}"`).join(",")).join("\n");
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.setAttribute("href", url);
+    link.href = url;
     link.setAttribute("download", filename);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  };
-
-  const handleDownloadAll = () => {
-    downloadCSV('orders', selectedMonth);
-    setTimeout(() => downloadCSV('returns', selectedMonth), 300);
-    setTimeout(() => downloadCSV('expenses', selectedMonth), 600);
-    setTimeout(() => downloadCSV('inventory', selectedMonth), 900);
-    setTimeout(() => downloadCSV('customers', selectedMonth), 1200);
   };
 
   return (
     <div className="space-y-8 pb-10">
+      {/* Header & Controls */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
         <div>
-          <h2 className="text-3xl font-serif font-bold text-slate-800 dark:text-white tracking-tight">Reports & Closing</h2>
-          <p className="text-slate-500 text-sm">Financial statements and period reconciliation.</p>
+          <h2 className="text-4xl font-serif font-bold text-slate-900 dark:text-white tracking-tight">Financial Control</h2>
+          <p className="text-slate-500 text-sm">Professional Accounting & Business Intelligence.</p>
         </div>
         
-        <div className="flex items-center gap-3 bg-white dark:bg-slate-900 p-2 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800">
-          <Calendar size={18} className="text-indigo-600 dark:text-indigo-400 ml-2" />
-          <input 
-            type="month" 
-            className="bg-transparent border-none outline-none font-bold text-slate-700 dark:text-slate-200 p-1 cursor-pointer"
-            value={selectedMonth}
-            onChange={(e) => setSelectedMonth(e.target.value)}
-          />
+        <div className="flex items-center gap-4">
+          <div className="bg-slate-100 dark:bg-slate-800 p-1.5 rounded-xl flex gap-1">
+             <button onClick={() => setActiveTab('overview')} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'overview' ? 'bg-white dark:bg-slate-700 shadow text-indigo-600 dark:text-white' : 'text-slate-500'}`}>Dashboard</button>
+             <button onClick={() => setActiveTab('statement')} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'statement' ? 'bg-white dark:bg-slate-700 shadow text-indigo-600 dark:text-white' : 'text-slate-500'}`}>P&L Statement</button>
+             <button onClick={() => setActiveTab('ledger')} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'ledger' ? 'bg-white dark:bg-slate-700 shadow text-indigo-600 dark:text-white' : 'text-slate-500'}`}>Ledger</button>
+          </div>
+          <div className="flex items-center gap-3 bg-white dark:bg-slate-900 p-2 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800">
+            <Calendar size={18} className="text-indigo-600 dark:text-indigo-400 ml-2" />
+            <input 
+              type="month" 
+              className="bg-transparent border-none outline-none font-bold text-slate-700 dark:text-slate-200 p-1 cursor-pointer text-sm"
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+            />
+          </div>
         </div>
       </div>
 
-      <div className="bg-slate-900 text-white rounded-[2.5rem] p-8 relative overflow-hidden shadow-xl border border-slate-800">
-         <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-600/20 rounded-full blur-[100px] -mr-32 -mt-32 pointer-events-none"></div>
-         
-         <div className="relative z-10 flex flex-col lg:flex-row justify-between lg:items-center gap-8">
-            <div className="space-y-6">
-               <div className="flex items-center gap-3">
-                  <div className="p-3 bg-indigo-500/20 rounded-xl text-indigo-300">
-                    <Wallet size={24} />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-bold">Month-End Reconciliation</h3>
-                    <p className="text-xs text-slate-400">Inventory Valuation Roll-forward System</p>
-                  </div>
-               </div>
-
-               <div className="flex gap-12">
-                  <div>
-                     <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Opening Inventory</p>
-                     <p className="text-2xl font-mono font-bold text-slate-300">৳{openingInventory.toLocaleString()}</p>
-                     <p className="text-[10px] text-slate-500 mt-1 flex items-center gap-1">
-                       <History size={10} /> Carried from {previousMonthStr}
-                     </p>
-                  </div>
-                  <div className="relative">
-                     <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Closing Inventory</p>
-                     <p className="text-2xl font-mono font-bold text-white">৳{closingInventory.toLocaleString()}</p>
-                     <p className="text-[10px] text-slate-500 mt-1">
-                       {currentSummary ? 'Locked & Finalized' : 'Current Estimate'}
-                     </p>
-                     {!currentSummary && (
-                       <div className="absolute -right-4 top-1/2 -translate-y-1/2 w-2 h-2 bg-green-500 rounded-full animate-pulse" title="Live Value"></div>
-                     )}
-                  </div>
-               </div>
-            </div>
-
-            <div className="flex flex-col gap-3">
-               {currentSummary ? (
-                 <div className="px-6 py-4 bg-green-500/10 border border-green-500/30 rounded-2xl flex items-center gap-3">
-                    <Lock size={18} className="text-green-500" />
-                    <div>
-                      <span className="font-bold text-green-400 text-sm block">Period Closed</span>
-                      <span className="text-[10px] text-green-500/70">{new Date(currentSummary.closedAt).toLocaleDateString()}</span>
+      {activeTab === 'overview' && (
+        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            {/* Top Cards */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="bg-slate-900 text-white rounded-[2.5rem] p-8 relative overflow-hidden shadow-2xl">
+                    <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/20 rounded-full blur-[80px] -mr-16 -mt-16 pointer-events-none"></div>
+                    <div className="relative z-10 flex flex-col justify-between h-full">
+                        <div>
+                            <div className="flex items-center gap-2 text-indigo-400 mb-1">
+                                <Wallet size={20} />
+                                <h3 className="text-[10px] font-black uppercase tracking-widest">Net Operating Profit</h3>
+                            </div>
+                            <p className="text-4xl font-serif font-bold tracking-tighter">৳{netOperatingProfit.toLocaleString()}</p>
+                            <div className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg mt-3 text-[10px] font-bold ${netOperatingProfit >= 0 ? 'bg-green-500/20 text-green-300' : 'bg-red-500/20 text-red-300'}`}>
+                                {netProfitMargin.toFixed(1)}% Net Margin
+                            </div>
+                        </div>
+                        <div className="mt-8 pt-6 border-t border-slate-800 flex justify-between text-xs text-slate-400">
+                            <span>Gross Margin: {grossMarginPercent.toFixed(1)}%</span>
+                            <span>OpEx Ratio: {netSales > 0 ? ((totalOpEx/netSales)*100).toFixed(1) : 0}%</span>
+                        </div>
                     </div>
-                 </div>
-               ) : (
-                 <button 
-                   onClick={handleClosePeriod}
-                   className="px-8 py-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl font-bold flex items-center gap-3 transition-all shadow-lg active:scale-95"
-                 >
-                   <Lock size={18} /> Close Month & Next <ArrowRight size={18} />
-                 </button>
-               )}
-               <button 
-                  onClick={handleDownloadAll}
-                  className="px-8 py-4 bg-white/5 hover:bg-white/10 text-slate-200 rounded-2xl font-bold flex items-center justify-center gap-3 transition-all border border-white/5 hover:border-white/20"
-               >
-                  <FolderDown size={18} /> Download Bundle
-               </button>
-            </div>
-         </div>
-      </div>
+                </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        <button onClick={() => downloadCSV('orders', selectedMonth)} className="flex flex-col items-center justify-center gap-4 p-8 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-indigo-500 rounded-[2.5rem] shadow-sm transition-all active:scale-95 group">
-          <div className="p-4 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-2xl group-hover:scale-110 transition-transform"><ShoppingBag size={24} /></div>
-          <span className="block font-bold dark:text-white">Sales Ledger</span>
-        </button>
+                <div className="bg-white dark:bg-slate-900/50 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 p-8 shadow-sm">
+                    <div className="flex items-center gap-2 text-slate-500 mb-6">
+                        <Activity size={20} className="text-indigo-500" />
+                        <h3 className="text-xs font-bold uppercase tracking-widest">Revenue Waterfall</h3>
+                    </div>
+                    <div className="space-y-4">
+                        <div className="flex justify-between items-center">
+                            <span className="text-sm font-medium text-slate-600 dark:text-slate-300">Gross Sales</span>
+                            <span className="font-mono font-bold text-slate-900 dark:text-white">৳{grossSales.toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between items-center text-red-500">
+                            <span className="text-sm font-medium">Returns</span>
+                            <span className="font-mono font-bold">-৳{salesReturns.toLocaleString()}</span>
+                        </div>
+                        <div className="h-px bg-slate-100 dark:bg-slate-800 my-2"></div>
+                        <div className="flex justify-between items-center">
+                            <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400">Net Sales</span>
+                            <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">৳{netSales.toLocaleString()}</span>
+                        </div>
+                    </div>
+                </div>
 
-        <button onClick={() => downloadCSV('expenses', selectedMonth)} className="flex flex-col items-center justify-center gap-4 p-8 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-indigo-500 rounded-[2.5rem] shadow-sm transition-all active:scale-95 group">
-          <div className="p-4 bg-red-50 dark:bg-red-500/10 text-red-500 rounded-2xl group-hover:scale-110 transition-transform"><Receipt size={24} /></div>
-          <span className="block font-bold text-slate-800 dark:text-white">Expense Ledger</span>
-        </button>
-
-        <button onClick={() => downloadCSV('inventory', selectedMonth)} className="flex flex-col items-center justify-center gap-4 p-8 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-indigo-500 rounded-[2.5rem] shadow-sm transition-all active:scale-95 group">
-          <div className="p-4 bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-2xl group-hover:scale-110 transition-transform"><Package size={24} /></div>
-          <span className="block font-bold text-slate-800 dark:text-white">Inventory</span>
-        </button>
-
-        <button onClick={() => downloadCSV('returns', selectedMonth)} className="flex flex-col items-center justify-center gap-4 p-8 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-indigo-500 rounded-[2.5rem] shadow-sm transition-all active:scale-95 group">
-          <div className="p-4 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-2xl group-hover:scale-110 transition-transform"><RotateCcw size={24} /></div>
-          <span className="block font-bold text-slate-800 dark:text-white">Returns Data</span>
-        </button>
-      </div>
-
-      {activeReport ? (
-        <div className="space-y-10 animate-in fade-in duration-500">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <div className="bg-white dark:bg-slate-900/50 p-8 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
-              <div className="flex items-center gap-2 mb-2 text-indigo-500">
-                <TrendingUp size={16} />
-                <p className="text-[10px] font-black uppercase tracking-widest">Net Revenue</p>
-              </div>
-              <p className="text-3xl font-bold text-slate-900 dark:text-white tracking-tight">৳{monthlyNetRevenue.toLocaleString()}</p>
-              {monthlyRefunds > 0 && (
-                <p className="text-[10px] text-red-500 mt-1 font-medium">After deducting ৳{monthlyRefunds.toLocaleString()} refunds</p>
-              )}
-            </div>
-            
-            <div className="bg-white dark:bg-slate-900/50 p-8 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
-               <div className="flex items-center gap-2 mb-2 text-red-500">
-                <TrendingDown size={16} />
-                <p className="text-[10px] font-black uppercase tracking-widest">Expenses</p>
-              </div>
-              <p className="text-3xl font-bold text-red-500 tracking-tight">৳{monthlyExpenses.toLocaleString()}</p>
-            </div>
-
-            <div className="bg-white dark:bg-slate-900/50 p-8 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
-               <div className="flex items-center gap-2 mb-2 text-emerald-500">
-                <ShoppingBag size={16} />
-                <p className="text-[10px] font-black uppercase tracking-widest">Net Profit</p>
-              </div>
-              <p className={`text-3xl font-bold tracking-tight ${monthlyNetProfit >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500'}`}>৳{monthlyNetProfit.toLocaleString()}</p>
-              {monthlyRecoveredCost > 0 && (
-                <p className="text-[10px] text-emerald-500 mt-1 font-medium">+৳{monthlyRecoveredCost.toLocaleString()} recovered asset value</p>
-              )}
+                <div className="bg-white dark:bg-slate-900/50 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 p-8 shadow-sm relative">
+                    <div className="flex items-center gap-2 text-slate-500 mb-4">
+                        <PieChart size={20} className="text-amber-500" />
+                        <h3 className="text-xs font-bold uppercase tracking-widest">Expense Breakdown</h3>
+                    </div>
+                    <div className="h-[140px] flex items-center gap-4">
+                        <div className="flex-1 h-full">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <RePieChart>
+                                    <Pie data={expenseCategories} innerRadius={35} outerRadius={55} paddingAngle={5} dataKey="value">
+                                        {expenseCategories.map((entry, index) => (
+                                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                        ))}
+                                    </Pie>
+                                    <Tooltip 
+                                        formatter={(value: number) => `৳${value.toLocaleString()}`}
+                                        contentStyle={{ backgroundColor: theme === 'dark' ? '#1e293b' : '#fff', borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
+                                    />
+                                </RePieChart>
+                            </ResponsiveContainer>
+                        </div>
+                        <div className="w-32 space-y-2">
+                            {expenseCategories.slice(0, 3).map((entry, index) => (
+                                <div key={index} className="flex items-center gap-2 text-[10px]">
+                                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }}></div>
+                                    <span className="truncate text-slate-500 dark:text-slate-400">{entry.name}</span>
+                                </div>
+                            ))}
+                            {expenseCategories.length > 3 && <div className="text-[10px] text-slate-400 pl-4">+ {expenseCategories.length - 3} more</div>}
+                        </div>
+                    </div>
+                    <div className="mt-2 text-right">
+                        <span className="text-xs text-slate-400">Total OpEx: </span>
+                        <span className="text-sm font-bold text-slate-900 dark:text-white">৳{totalOpEx.toLocaleString()}</span>
+                    </div>
+                </div>
             </div>
 
-            <div className="bg-slate-900 p-8 rounded-3xl shadow-xl text-white border border-slate-800">
-              <p className="text-[10px] font-black uppercase text-indigo-400 tracking-widest mb-1">Top Performer</p>
-              <p className="text-lg font-bold truncate leading-tight">{activeReport.report.topProduct}</p>
-            </div>
-          </div>
+            {/* Reconciliation Flow - Shows Carry Over */}
+            <div className="bg-slate-50 dark:bg-slate-800/50 rounded-[2.5rem] p-8 border border-slate-200 dark:border-slate-700 shadow-inner">
+                <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-6 flex items-center gap-2">
+                    <ArrowRightCircle size={18} className="text-indigo-500" /> Account Reconciliation Flow
+                </h3>
+                
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-8 relative">
+                    {/* Opening Column */}
+                    <div className="space-y-4">
+                        <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Opening (Carried Fwd)</p>
+                        <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-100 dark:border-slate-800">
+                            <span className="text-xs text-slate-500 block mb-1">Cash Balance</span>
+                            <span className="font-mono font-bold text-slate-800 dark:text-white">৳{openingBalance.toLocaleString()}</span>
+                        </div>
+                        <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-100 dark:border-slate-800">
+                            <span className="text-xs text-slate-500 block mb-1">Inventory Value</span>
+                            <span className="font-mono font-bold text-slate-800 dark:text-white">৳{openingInventory.toLocaleString()}</span>
+                        </div>
+                    </div>
 
-          <div className="bg-white dark:bg-slate-900/40 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm backdrop-blur-sm">
-            <div className="p-8 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-800/50">
-              <h3 className="font-bold text-lg text-slate-800 dark:text-white flex items-center gap-2">
-                <ClipboardList size={20} className="text-indigo-600 dark:text-indigo-400" /> Monthly Breakdown
-              </h3>
+                    {/* Arrow / Current Activity */}
+                    <div className="flex flex-col items-center justify-center space-y-2 py-4 md:py-0">
+                        <div className="text-center">
+                            <span className="text-[10px] font-bold text-indigo-500 uppercase">Net Profit</span>
+                            <p className={`font-mono font-bold text-lg ${netOperatingProfit >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                {netOperatingProfit >= 0 ? '+' : ''}৳{netOperatingProfit.toLocaleString()}
+                            </p>
+                        </div>
+                        <ArrowRight size={24} className="text-slate-300 hidden md:block" />
+                        <div className="md:hidden w-px h-8 bg-slate-300"></div>
+                    </div>
+
+                    {/* Closing Column */}
+                    <div className="space-y-4">
+                        <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Closing (To Next Month)</p>
+                        <div className="bg-indigo-50 dark:bg-indigo-900/20 p-4 rounded-2xl border border-indigo-100 dark:border-indigo-500/20">
+                            <span className="text-xs text-indigo-600 dark:text-indigo-400 block mb-1 font-bold">Closing Balance</span>
+                            <span className="font-mono font-bold text-slate-900 dark:text-white">৳{closingBalance.toLocaleString()}</span>
+                        </div>
+                        <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-100 dark:border-slate-800">
+                            <span className="text-xs text-slate-500 block mb-1">Closing Inventory</span>
+                            <span className="font-mono font-bold text-slate-800 dark:text-white">৳{closingInventory.toLocaleString()}</span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Action Bar */}
+                <div className="flex justify-end mt-8 pt-6 border-t border-slate-200 dark:border-slate-700">
+                    <div className="flex items-center gap-3">
+                        {currentSummary ? (
+                            <div className="flex items-center gap-2 px-4 py-2 bg-green-500/10 text-green-600 dark:text-green-400 rounded-xl border border-green-500/20">
+                                <Lock size={14} />
+                                <span className="text-xs font-bold uppercase tracking-wide">Period Closed</span>
+                            </div>
+                        ) : (
+                            <button onClick={handleClosePeriod} className="flex items-center gap-2 px-6 py-3 bg-slate-900 dark:bg-indigo-600 text-white rounded-xl text-xs font-bold uppercase tracking-widest hover:scale-105 transition-transform shadow-lg">
+                                <Lock size={14} /> Close Period & Carry Forward
+                            </button>
+                        )}
+                        <button onClick={() => downloadCSV('P&L_Statement')} className="p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl hover:text-indigo-600 transition-colors">
+                            <FolderDown size={18} />
+                        </button>
+                    </div>
+                </div>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm whitespace-nowrap">
-                <thead className="bg-slate-50 dark:bg-slate-800 text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-widest">
-                  <tr>
-                    <th className="px-8 py-5">Product</th>
-                    <th className="px-8 py-5 text-center">Qty Sold</th>
-                    <th className="px-8 py-5 text-right">Revenue (৳)</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {Object.entries(activeReport.itemCounts).map(([name, qty]) => (
-                    <tr key={name} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
-                      <td className="px-8 py-5 font-bold text-slate-700 dark:text-slate-300">{name}</td>
-                      <td className="px-8 py-5 text-center font-mono font-bold text-indigo-600 dark:text-indigo-400">{qty}</td>
-                      <td className="px-8 py-5 text-right font-bold text-slate-900 dark:text-white">
-                        ৳{(sales.filter(s => s.date.startsWith(selectedMonth))
-                          .reduce((sum, s) => sum + s.items.filter(i => i.productName === name)
-                          .reduce((iSum, i) => iSum + i.total, 0), 0)).toLocaleString()}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
         </div>
-      ) : (
-        <div className="py-20 text-center text-slate-400 bg-slate-50 dark:bg-slate-900/50 rounded-[3rem] border-2 border-dashed border-slate-200 dark:border-slate-800">
-          <p className="font-medium">No activity recorded for this month.</p>
+      )}
+
+      {activeTab === 'statement' && (
+        <div className="max-w-3xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl rounded-none md:rounded-lg overflow-hidden">
+                <div className="bg-slate-50 dark:bg-slate-950 p-8 border-b border-slate-200 dark:border-slate-800 text-center">
+                    <h2 className="text-2xl font-serif font-bold text-slate-900 dark:text-white uppercase tracking-widest">Income Statement</h2>
+                    <p className="text-xs text-slate-500 mt-2 font-mono uppercase">Period: {new Date(selectedMonth).toLocaleDateString(undefined, { year: 'numeric', month: 'long' })}</p>
+                </div>
+                
+                <div className="p-8 space-y-1 font-mono text-sm">
+                    {/* Revenue Section */}
+                    <div className="flex justify-between py-2">
+                        <span className="font-bold text-slate-700 dark:text-slate-300">Gross Sales Revenue</span>
+                        <span>৳{grossSales.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                    </div>
+                    <div className="flex justify-between py-2 text-slate-500">
+                        <span>Less: Returns & Allowances</span>
+                        <span>(৳{salesReturns.toLocaleString(undefined, {minimumFractionDigits: 2})})</span>
+                    </div>
+                    <div className="flex justify-between py-3 border-t border-slate-200 dark:border-slate-700 font-bold text-lg text-slate-900 dark:text-white">
+                        <span>NET SALES</span>
+                        <span>৳{netSales.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                    </div>
+
+                    <div className="h-6"></div>
+
+                    {/* COGS Section */}
+                    <div className="flex justify-between py-2 text-slate-500">
+                        <span>Cost of Goods Sold (COGS)</span>
+                        <span>(৳{netCOGS.toLocaleString(undefined, {minimumFractionDigits: 2})})</span>
+                    </div>
+                    <div className="flex justify-between py-3 border-t border-slate-200 dark:border-slate-700 font-bold text-slate-800 dark:text-slate-200">
+                        <span>GROSS PROFIT</span>
+                        <span>৳{grossProfit.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                    </div>
+
+                    <div className="h-6"></div>
+
+                    {/* OpEx Section */}
+                    <div className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Operating Expenses</div>
+                    {expenseCategories.map((cat, idx) => (
+                        <div key={idx} className="flex justify-between py-1 text-slate-500 pl-4 text-xs">
+                            <span>{cat.name}</span>
+                            <span>(৳{cat.value.toLocaleString(undefined, {minimumFractionDigits: 2})})</span>
+                        </div>
+                    ))}
+                    <div className="flex justify-between py-2 font-bold text-slate-600 dark:text-slate-400 border-t border-dashed border-slate-200 dark:border-slate-700 mt-2">
+                        <span>Total Operating Expenses</span>
+                        <span>(৳{totalOpEx.toLocaleString(undefined, {minimumFractionDigits: 2})})</span>
+                    </div>
+
+                    <div className="h-8"></div>
+
+                    {/* Net Profit Section */}
+                    <div className="flex justify-between py-4 border-t-2 border-slate-900 dark:border-white font-black text-xl text-slate-900 dark:text-white bg-slate-50 dark:bg-slate-800/50 -mx-8 px-8">
+                        <span>NET OPERATING PROFIT</span>
+                        <span className={netOperatingProfit >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600'}>
+                            ৳{netOperatingProfit.toLocaleString(undefined, {minimumFractionDigits: 2})}
+                        </span>
+                    </div>
+                </div>
+                <div className="p-4 bg-slate-50 dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 flex justify-center">
+                    <button onClick={() => downloadCSV('P&L_Statement')} className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-indigo-600 dark:text-indigo-400 hover:underline">
+                        <Download size={14} /> Export Statement PDF / CSV
+                    </button>
+                </div>
+            </div>
+        </div>
+      )}
+
+      {activeTab === 'ledger' && (
+        <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
+                <div className="p-6 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-800/50">
+                    <h3 className="font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                        <FileText size={20} className="text-indigo-500" /> General Ledger
+                    </h3>
+                    <button onClick={() => downloadCSV('Ledger')} className="text-xs font-bold text-indigo-600 bg-white dark:bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:border-indigo-500 transition-colors">
+                        Export CSV
+                    </button>
+                </div>
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left text-sm whitespace-nowrap">
+                        <thead className="bg-slate-100 dark:bg-slate-950 text-[10px] font-black uppercase text-slate-500 tracking-widest">
+                            <tr>
+                                <th className="px-6 py-4">Date</th>
+                                <th className="px-6 py-4">Transaction Type</th>
+                                <th className="px-6 py-4">Description</th>
+                                <th className="px-6 py-4 text-right text-green-600">Credit (In)</th>
+                                <th className="px-6 py-4 text-right text-red-600">Debit (Out)</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-mono text-xs">
+                            {/* Combined Sales, Returns, and Expenses sorted by date */}
+                            {[
+                                ...monthlySales.map(s => ({ date: s.date, type: 'Sales', desc: `Order #${s.id.slice(-6)} - ${s.customerName}`, credit: s.totalAmount, debit: 0 })),
+                                ...monthlyReturns.map(r => ({ date: r.date, type: 'Refund', desc: `RMA #${r.id.slice(-6)} - ${r.customerName}`, credit: 0, debit: r.refundAmount })),
+                                ...monthlyExpenses.map(e => ({ date: e.date, type: 'Expense', desc: `${e.category} - ${e.description}`, credit: 0, debit: e.amount }))
+                            ].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map((row, idx) => (
+                                <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
+                                    <td className="px-6 py-3 text-slate-500">{new Date(row.date).toLocaleDateString()}</td>
+                                    <td className="px-6 py-3">
+                                        <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${
+                                            row.type === 'Sales' ? 'bg-green-100 text-green-700' : 
+                                            row.type === 'Refund' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'
+                                        }`}>{row.type}</span>
+                                    </td>
+                                    <td className="px-6 py-3 font-medium text-slate-700 dark:text-slate-300">{row.desc}</td>
+                                    <td className="px-6 py-3 text-right text-green-600 dark:text-green-400 font-bold">{row.credit > 0 ? `৳${row.credit.toLocaleString()}` : '-'}</td>
+                                    <td className="px-6 py-3 text-right text-red-500 font-bold">{row.debit > 0 ? `৳${row.debit.toLocaleString()}` : '-'}</td>
+                                </tr>
+                            ))}
+                            {monthlySales.length === 0 && monthlyExpenses.length === 0 && (
+                                <tr>
+                                    <td colSpan={5} className="px-6 py-12 text-center text-slate-400 italic">No transactions recorded for this period.</td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
       )}
     </div>

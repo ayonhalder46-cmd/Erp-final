@@ -6,6 +6,7 @@ export interface ProductVariant {
   costPrice: number;
   sellingPrice: number;
   stockLevel: number;
+  minStockLevel?: number; // New: Reorder point for variants
 }
 
 export interface Product {
@@ -17,6 +18,7 @@ export interface Product {
   costPrice: number;
   sellingPrice: number;
   stockLevel: number;
+  minStockLevel?: number; // New: Reorder point
   hasVariants: boolean;
   variants?: ProductVariant[];
   image?: string; // Base64 or URL
@@ -67,35 +69,36 @@ export interface Sale {
   totalAmount: number;
   totalCost: number;
   profit: number;
-  notes: string;
-  status: 'Completed' | 'Pending' | 'Cancelled';
-  updatedAt?: string;
+  notes?: string;
+  // Strict alignment with Google Sheets "STATUS_OPTIONS"
+  status: 'Pending' | 'Confirmed' | 'Delivered' | 'Returned' | 'Cancelled';
+  isDelivered?: boolean; // Deprecated, kept for backward compat
 }
 
 export interface Expense {
   id: string;
   date: string;
-  category: 'Rent' | 'Utilities' | 'Salaries' | 'Marketing' | 'Logistics' | 'Maintenance' | 'Other';
+  category: string;
   description: string;
   amount: number;
-  paymentMethod: 'Cash' | 'Bank Transfer' | 'Card' | 'Mobile Banking';
+  paymentMethod: string;
   status: 'Paid' | 'Pending';
-  updatedAt?: string;
+  referenceId?: string;
 }
 
 export interface Return {
   id: string;
   orderId: string;
-  productId: string;
-  variantId?: string;
   customerName: string;
   productName: string;
+  productId: string;
+  variantId?: string;
   quantity: number;
-  unitCost?: number; // Captured to calculate asset recovery value
+  unitCost: number;
   refundAmount: number;
   reason: 'Defective' | 'Wrong Item' | 'Changed Mind' | 'Other';
   condition: 'Resellable' | 'Damaged';
-  status: 'Approved' | 'Rejected' | 'Pending';
+  status: 'Pending' | 'Approved' | 'Rejected';
   date: string;
 }
 
@@ -108,6 +111,47 @@ export interface AuditLog {
   type: 'create' | 'update' | 'delete' | 'system';
 }
 
+export type ViewState = 
+  | 'dashboard' 
+  | 'inventory' 
+  | 'sales' 
+  | 'customers' 
+  | 'suppliers' 
+  | 'expenses' 
+  | 'returns' 
+  | 'reports' 
+  | 'calculator' 
+  | 'tester' 
+  | 'settings' 
+  | 'advisor' 
+  | 'audit'
+  | 'spreadsheet'
+  | 'procurement';
+
+export type SyncStatus = 'synced' | 'syncing' | 'error' | 'offline';
+
+export interface PurchaseOrderItem {
+  productId: string;
+  productName: string;
+  variantId?: string;
+  variantName?: string;
+  quantity: number;
+  unitCost: number;
+  total: number;
+}
+
+export interface PurchaseOrder {
+  id: string;
+  date: string;
+  expectedDate: string;
+  supplierId: string;
+  supplierName: string;
+  items: PurchaseOrderItem[];
+  totalAmount: number;
+  status: 'Ordered' | 'Received' | 'Cancelled';
+  notes?: string;
+}
+
 export interface MonthlyReport {
   month: string;
   revenue: number;
@@ -117,17 +161,13 @@ export interface MonthlyReport {
 }
 
 export interface PeriodSummary {
-  month: string; // Format: "YYYY-MM"
+  month: string;
   openingInventoryValue: number;
   closingInventoryValue: number;
-  openingBalance: number; // Cash/Bank start
-  closingBalance: number; // Cash/Bank end
+  openingBalance: number;
+  closingBalance: number;
   totalRevenue: number;
   totalExpenses: number;
   netProfit: number;
   closedAt: string;
 }
-
-export type SyncStatus = 'synced' | 'syncing' | 'error' | 'offline';
-
-export type ViewState = 'dashboard' | 'inventory' | 'sales' | 'customers' | 'suppliers' | 'expenses' | 'returns' | 'calculator' | 'reports' | 'advisor' | 'audit' | 'settings' | 'tester' | 'spreadsheet';

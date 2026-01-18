@@ -19,7 +19,8 @@ import {
   FileSpreadsheet,
   Wifi,
   WifiOff,
-  Home
+  Home,
+  Container
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -37,6 +38,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange, the
     { id: 'dashboard', label: 'Overview', icon: <LayoutDashboard size={20} /> },
     { id: 'spreadsheet', label: 'Master Sheets', icon: <FileSpreadsheet size={20} /> },
     { id: 'inventory', label: 'Inventory', icon: <Package size={20} /> },
+    { id: 'procurement', label: 'Procurement', icon: <Container size={20} /> },
     { id: 'sales', label: 'Orders', icon: <ShoppingCart size={20} /> },
     { id: 'customers', label: 'Customers', icon: <Users size={20} /> },
     { id: 'suppliers', label: 'Suppliers', icon: <Truck size={20} /> },

@@ -6,7 +6,7 @@
  */
 const DB_NAME = 'TheDecorHub_DB';
 // Incremented version to trigger onupgradeneeded for new stores
-const DB_VERSION = 6; 
+const DB_VERSION = 7; 
 const SYNC_CHANNEL = 'hub_erp_sync_stream';
 const broadcast = new BroadcastChannel(SYNC_CHANNEL);
 
@@ -24,8 +24,8 @@ export class ApiService {
 
       request.onupgradeneeded = (event) => {
         const db = (event.target as IDBOpenDBRequest).result;
-        // Added 'expenses', 'returns', and 'period_summaries' to the store list
-        const stores = ['products', 'sales', 'customers', 'suppliers', 'logs', 'expenses', 'returns', 'period_summaries'];
+        // Added 'expenses', 'returns', 'period_summaries', and 'purchaseOrders' to the store list
+        const stores = ['products', 'sales', 'customers', 'suppliers', 'logs', 'expenses', 'returns', 'period_summaries', 'purchaseOrders'];
         stores.forEach(store => {
           if (!db.objectStoreNames.contains(store)) {
             db.createObjectStore(store);

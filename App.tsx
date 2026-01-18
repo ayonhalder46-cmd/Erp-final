@@ -15,7 +15,8 @@ import { Settings } from './components/Settings';
 import { AuditTrail } from './components/AuditTrail';
 import { Advisor } from './components/Advisor';
 import { SpreadsheetView } from './components/SpreadsheetView';
-import { ViewState, Product, Sale, Customer, AuditLog, Supplier, Expense, Return, SyncStatus } from './types';
+import { PurchaseOrders } from './components/PurchaseOrders';
+import { ViewState, Product, Sale, Customer, AuditLog, Supplier, Expense, Return, SyncStatus, PurchaseOrder, PeriodSummary } from './types';
 import { INITIAL_PRODUCTS, INITIAL_CUSTOMERS, INITIAL_SUPPLIERS, INITIAL_EXPENSES } from './constants';
 import { ApiService } from './components/apiService';
 import { Lock, Unlock } from 'lucide-react';
@@ -33,6 +34,8 @@ function App() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [returns, setReturns] = useState<Return[]>([]);
+  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
+  const [periodSummaries, setPeriodSummaries] = useState<PeriodSummary[]>([]);
   const [logs, setLogs] = useState<AuditLog[]>([]);
   
   // System State
@@ -42,11 +45,12 @@ function App() {
   const [isResetting, setIsResetting] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
-  // Refs for State Access in Async Closures (Fixes Stale Closure Issues)
+  // Refs for State Access
   const productsRef = useRef(products);
   const salesRef = useRef(sales);
   const customersRef = useRef(customers);
   const returnsRef = useRef(returns);
+  const purchaseOrdersRef = useRef(purchaseOrders);
 
   // Security & Profile State
   const [pin, setPin] = useState('');
@@ -77,19 +81,17 @@ function App() {
   }, [isResetting]);
 
   useEffect(() => {
-    // Keep refs synced with state
     productsRef.current = products;
     salesRef.current = sales;
     customersRef.current = customers;
     returnsRef.current = returns;
-  }, [products, sales, customers, returns]);
+    purchaseOrdersRef.current = purchaseOrders;
+  }, [products, sales, customers, returns, purchaseOrders]);
 
   useEffect(() => {
-    // Network listeners
     window.addEventListener('online', () => setIsOnline(true));
     window.addEventListener('offline', () => setIsOnline(false));
 
-    // Load Security & Profile Settings from LocalStorage (Sync)
     const storedPin = localStorage.getItem('hub_pin') || '1234';
     setPin(storedPin);
     
@@ -102,41 +104,27 @@ function App() {
       try {
         setSyncStatus('syncing');
         
-        const [
-          fetchedProducts,
-          fetchedSales,
-          fetchedCustomers,
-          fetchedSuppliers,
-          fetchedExpenses,
-          fetchedReturns,
-          fetchedLogs
-        ] = await Promise.all([
+        const [fetchedProducts, fetchedSales, fetchedCustomers, fetchedSuppliers, fetchedExpenses, fetchedReturns, fetchedPOs, fetchedSummaries, fetchedLogs] = await Promise.all([
           ApiService.fetchLatest('products'),
           ApiService.fetchLatest('sales'),
           ApiService.fetchLatest('customers'),
           ApiService.fetchLatest('suppliers'),
           ApiService.fetchLatest('expenses'),
           ApiService.fetchLatest('returns'),
+          ApiService.fetchLatest('purchaseOrders'),
+          ApiService.fetchLatest('period_summaries'),
           ApiService.fetchLatest('logs')
         ]);
 
-        if (fetchedProducts) setProducts(fetchedProducts);
-        else setProducts(INITIAL_PRODUCTS);
-
-        if (fetchedSales) setSales(fetchedSales);
-        
-        if (fetchedCustomers) setCustomers(fetchedCustomers);
-        else setCustomers(INITIAL_CUSTOMERS);
-
-        if (fetchedSuppliers) setSuppliers(fetchedSuppliers);
-        else setSuppliers(INITIAL_SUPPLIERS);
-
-        if (fetchedExpenses) setExpenses(fetchedExpenses);
-        else setExpenses(INITIAL_EXPENSES);
-
-        if (fetchedReturns) setReturns(fetchedReturns);
-        
-        if (fetchedLogs) setLogs(fetchedLogs);
+        setProducts(fetchedProducts || INITIAL_PRODUCTS);
+        setSales(fetchedSales || []);
+        setCustomers(fetchedCustomers || INITIAL_CUSTOMERS);
+        setSuppliers(fetchedSuppliers || INITIAL_SUPPLIERS);
+        setExpenses(fetchedExpenses || INITIAL_EXPENSES);
+        setReturns(fetchedReturns || []);
+        setPurchaseOrders(fetchedPOs || []);
+        setPeriodSummaries(fetchedSummaries || []);
+        setLogs(fetchedLogs || []);
 
         setIsInitialized(true);
         setSyncStatus('synced');
@@ -148,7 +136,6 @@ function App() {
 
     loadData();
 
-    // Setup broadcast listener for multi-tab sync
     ApiService.onSync((entity, data) => {
       if (entity === 'products') setProducts(data);
       if (entity === 'sales') setSales(data);
@@ -156,6 +143,8 @@ function App() {
       if (entity === 'suppliers') setSuppliers(data);
       if (entity === 'expenses') setExpenses(data);
       if (entity === 'returns') setReturns(data);
+      if (entity === 'purchaseOrders') setPurchaseOrders(data);
+      if (entity === 'period_summaries') setPeriodSummaries(data);
       if (entity === 'logs') setLogs(data);
     });
 
@@ -180,7 +169,46 @@ function App() {
     window.location.reload();
   };
 
-  // --- Handlers with Functional State Updates to Prevent Stale Closures ---
+  const handleUpdatePeriodSummaries = (summaries: PeriodSummary[]) => {
+    setPeriodSummaries(summaries);
+    ApiService.pushUpdate('period_summaries', summaries);
+    logAction('Close Period', 'Finance', 'Updated Monthly Financial Snapshots');
+  };
+
+  // --- LOGIC ENGINE ---
+
+  const calculateTier = (totalSpent: number): Customer['tier'] => {
+    if (totalSpent >= 100000) return 'Gold';
+    if (totalSpent >= 50000) return 'Silver';
+    return 'Bronze';
+  };
+
+  const adjustStock = (items: any[], direction: 'deduct' | 'restore') => {
+    setProducts(prev => {
+        const updatedProducts = [...prev];
+        items.forEach(item => {
+          const productIndex = updatedProducts.findIndex(p => p.id === item.productId);
+          if (productIndex > -1) {
+            const product = { ...updatedProducts[productIndex] };
+            const modifier = direction === 'deduct' ? -1 : 1;
+            
+            if (product.hasVariants && item.variantId) {
+               const variantIndex = product.variants?.findIndex(v => v.id === item.variantId);
+               if (variantIndex !== undefined && variantIndex > -1 && product.variants) {
+                 const variants = [...product.variants];
+                 variants[variantIndex] = { ...variants[variantIndex], stockLevel: variants[variantIndex].stockLevel + (item.quantity * modifier) };
+                 product.variants = variants;
+               }
+            } else {
+               product.stockLevel += (item.quantity * modifier);
+            }
+            updatedProducts[productIndex] = product;
+          }
+        });
+        ApiService.pushUpdate('products', updatedProducts);
+        return updatedProducts;
+    });
+  };
 
   const handleAddProduct = (product: Product) => {
     setProducts(prev => {
@@ -217,85 +245,89 @@ function App() {
         return updatedSales;
     });
     
-    setProducts(prev => {
-        const updatedProducts = [...prev];
-        sale.items.forEach(item => {
-          const productIndex = updatedProducts.findIndex(p => p.id === item.productId);
-          if (productIndex > -1) {
-            const product = { ...updatedProducts[productIndex] };
-            if (product.hasVariants && item.variantId) {
-               const variantIndex = product.variants?.findIndex(v => v.id === item.variantId);
-               if (variantIndex !== undefined && variantIndex > -1 && product.variants) {
-                 const variants = [...product.variants];
-                 variants[variantIndex] = { ...variants[variantIndex], stockLevel: variants[variantIndex].stockLevel - item.quantity };
-                 product.variants = variants;
-               }
-            } else {
-               product.stockLevel -= item.quantity;
-            }
-            updatedProducts[productIndex] = product;
-          }
-        });
-        ApiService.pushUpdate('products', updatedProducts);
-        return updatedProducts;
-    });
+    if (sale.status === 'Confirmed' || sale.status === 'Delivered') {
+        adjustStock(sale.items, 'deduct');
+    }
 
-    setCustomers(prev => {
-        const updatedCustomers = prev.map(c => {
-          if (c.id === sale.customerId) {
-            return { 
-              ...c, 
-              totalSpent: c.totalSpent + sale.totalAmount,
-              lastPurchaseDate: sale.date 
-            };
-          }
-          return c;
-        });
-        ApiService.pushUpdate('customers', updatedCustomers);
-        return updatedCustomers;
-    });
+    if (sale.status !== 'Cancelled' && sale.status !== 'Returned') {
+      setCustomers(prev => {
+          const updatedCustomers = prev.map(c => {
+            if (c.id === sale.customerId) {
+              const newTotal = c.totalSpent + sale.totalAmount;
+              return { 
+                ...c, 
+                totalSpent: newTotal,
+                lastPurchaseDate: sale.date,
+                tier: calculateTier(newTotal)
+              };
+            }
+            return c;
+          });
+          ApiService.pushUpdate('customers', updatedCustomers);
+          return updatedCustomers;
+      });
+    }
     
     logAction('Create Order', 'Sales', `Processed Order #${sale.id.slice(-6)}`, 'create');
   };
 
   const handleUpdateSale = (updatedSale: Sale) => {
+    const oldSale = salesRef.current.find(s => s.id === updatedSale.id);
+    if (!oldSale) return;
+
+    const oldStatus = oldSale.status;
+    const newStatus = updatedSale.status;
+    
+    const isOldConsumed = oldStatus === 'Confirmed' || oldStatus === 'Delivered';
+    const isNewConsumed = newStatus === 'Confirmed' || newStatus === 'Delivered';
+
+    if (isOldConsumed) {
+        adjustStock(oldSale.items, 'restore');
+    }
+
     setSales(prev => {
         const updatedSales = prev.map(s => s.id === updatedSale.id ? updatedSale : s);
         ApiService.pushUpdate('sales', updatedSales);
         return updatedSales;
     });
-    logAction('Update Order', 'Sales', `Updated Status #${updatedSale.id.slice(-6)} to ${updatedSale.status}`);
+
+    if (isNewConsumed) {
+        adjustStock(updatedSale.items, 'deduct');
+    }
+
+    const oldContribution = (oldStatus !== 'Cancelled' && oldStatus !== 'Returned') ? oldSale.totalAmount : 0;
+    const newContribution = (newStatus !== 'Cancelled' && newStatus !== 'Returned') ? updatedSale.totalAmount : 0;
+    
+    const ltvAdjustment = newContribution - oldContribution;
+
+    if (ltvAdjustment !== 0) {
+        setCustomers(prev => {
+            const updatedCustomers = prev.map(c => {
+                if (c.id === updatedSale.customerId) {
+                    const newTotal = c.totalSpent + ltvAdjustment;
+                    return { 
+                        ...c, 
+                        totalSpent: newTotal,
+                        tier: calculateTier(newTotal)
+                    };
+                }
+                return c;
+            });
+            ApiService.pushUpdate('customers', updatedCustomers);
+            return updatedCustomers;
+        });
+    }
+
+    logAction('Update Order', 'Sales', `Updated Order #${updatedSale.id.slice(-6)}: ${oldStatus} -> ${newStatus}`);
   };
 
   const handleDeleteSale = (id: string) => {
-    // Access latest sales from ref to avoid stale closure if multiple ops happen quickly
     const sale = salesRef.current.find(s => s.id === id);
     if (!sale) return;
 
-    setProducts(prev => {
-        const updatedProducts = [...prev];
-        if (sale.status !== 'Cancelled') {
-          sale.items.forEach(item => {
-            const productIndex = updatedProducts.findIndex(p => p.id === item.productId);
-            if (productIndex > -1) {
-              const product = { ...updatedProducts[productIndex] };
-              if (product.hasVariants && item.variantId) {
-                 const variantIndex = product.variants?.findIndex(v => v.id === item.variantId);
-                 if (variantIndex !== undefined && variantIndex > -1 && product.variants) {
-                   const variants = [...product.variants];
-                   variants[variantIndex] = { ...variants[variantIndex], stockLevel: variants[variantIndex].stockLevel + item.quantity };
-                   product.variants = variants;
-                 }
-              } else {
-                 product.stockLevel += item.quantity;
-              }
-              updatedProducts[productIndex] = product;
-            }
-          });
-        }
-        ApiService.pushUpdate('products', updatedProducts);
-        return updatedProducts;
-    });
+    if (sale.status === 'Confirmed' || sale.status === 'Delivered') {
+        adjustStock(sale.items, 'restore');
+    }
 
     setSales(prev => {
         const updatedSales = prev.filter(s => s.id !== id);
@@ -303,16 +335,23 @@ function App() {
         return updatedSales;
     });
     
-    setCustomers(prev => {
-        const updatedCustomers = prev.map(c => {
-          if (c.id === sale.customerId) {
-            return { ...c, totalSpent: c.totalSpent - sale.totalAmount };
-          }
-          return c;
-        });
-        ApiService.pushUpdate('customers', updatedCustomers);
-        return updatedCustomers;
-    });
+    if (sale.status !== 'Cancelled' && sale.status !== 'Returned') {
+      setCustomers(prev => {
+          const updatedCustomers = prev.map(c => {
+            if (c.id === sale.customerId) {
+              const newTotal = c.totalSpent - sale.totalAmount;
+              return { 
+                  ...c, 
+                  totalSpent: newTotal,
+                  tier: calculateTier(newTotal)
+              };
+            }
+            return c;
+          });
+          ApiService.pushUpdate('customers', updatedCustomers);
+          return updatedCustomers;
+      });
+    }
 
     logAction('Delete Order', 'Sales', `Voided Order #${sale.id.slice(-6)}`, 'delete');
   };
@@ -408,46 +447,24 @@ function App() {
     logAction('Create Return', 'RMA', `Opened Ticket for Order #${rma.orderId.slice(-6)}`, 'create');
   };
 
-  const handleUpdateReturnStatus = (id: string, status: Return['status']) => {
-    // CRITICAL FIX: Use returnsRef to access the latest state inside the closure.
-    // This prevents the "stale closure" bug where the function execution sees an old version of 'returns'.
-    const rma = returnsRef.current.find(r => r.id === id);
-    
-    if (!rma) {
-        console.error("Critical: RMA not found in current state context", id);
-        return;
-    }
-
+  const handleUpdateReturnStatus = (rma: Return, status: Return['status']) => {
     if (status === 'Approved' && rma.status !== 'Approved') {
        if (rma.condition === 'Resellable') {
-         setProducts(prev => {
-             const updatedProducts = [...prev];
-             const productIndex = updatedProducts.findIndex(p => p.id === rma.productId);
-             if (productIndex > -1) {
-               const product = { ...updatedProducts[productIndex] };
-               if (product.hasVariants && rma.variantId) {
-                  const vIndex = product.variants?.findIndex(v => v.id === rma.variantId);
-                  if (vIndex !== undefined && vIndex > -1 && product.variants) {
-                     const variants = [...product.variants];
-                     variants[vIndex] = { ...variants[vIndex], stockLevel: variants[vIndex].stockLevel + rma.quantity };
-                     product.variants = variants;
-                  }
-               } else {
-                  product.stockLevel += rma.quantity;
-               }
-               updatedProducts[productIndex] = product;
-             }
-             ApiService.pushUpdate('products', updatedProducts);
-             return updatedProducts;
-         });
+         adjustStock([{ productId: rma.productId, variantId: rma.variantId, quantity: rma.quantity }], 'restore');
        }
        
        setCustomers(prev => {
            const updatedCustomers = prev.map(c => {
-             // Using name match as fallback if ID mismatch, but strictly ID is better if consistent
-             // The logic was checking name in previous iteration, let's keep it but ideally use ID
              if (c.name === rma.customerName) { 
-               return { ...c, totalSpent: c.totalSpent - rma.refundAmount };
+               // LTV Logic: Total Spent minus the Refunded Amount. 
+               // If refundAmount does NOT include delivery charge, the customer "spent" that charge.
+               // If refundAmount includes delivery (full reversal), they spent nothing.
+               const newTotal = c.totalSpent - rma.refundAmount;
+               return { 
+                   ...c, 
+                   totalSpent: newTotal,
+                   tier: calculateTier(newTotal)
+               };
              }
              return c;
            });
@@ -460,8 +477,8 @@ function App() {
            if (saleIndex > -1) {
               const updatedSale = { ...prev[saleIndex] };
               updatedSale.notes = updatedSale.notes 
-                ? `${updatedSale.notes} | Return Approved (RMA: ${rma.id.slice(-4)})` 
-                : `Return Approved (RMA: ${rma.id.slice(-4)})`;
+                ? `${updatedSale.notes} | RMA Approved: ${rma.id.slice(-4)}` 
+                : `RMA Approved: ${rma.id.slice(-4)}`;
               
               const newSales = [...prev];
               newSales[saleIndex] = updatedSale;
@@ -473,7 +490,7 @@ function App() {
     }
 
     setReturns(prev => {
-        const rmaIndex = prev.findIndex(r => r.id === id);
+        const rmaIndex = prev.findIndex(r => r.id === rma.id);
         if (rmaIndex === -1) return prev;
         const updatedReturns = [...prev];
         updatedReturns[rmaIndex] = { ...updatedReturns[rmaIndex], status };
@@ -481,7 +498,85 @@ function App() {
         return updatedReturns;
     });
     
-    logAction('Update Return', 'RMA', `Set Ticket #${id.slice(-6)} to ${status}`);
+    logAction('Update Return', 'RMA', `Set Ticket #${rma.id.slice(-6)} to ${status}`);
+  };
+
+  const handleCreatePO = (po: PurchaseOrder) => {
+    setPurchaseOrders(prev => {
+      const updated = [po, ...prev];
+      ApiService.pushUpdate('purchaseOrders', updated);
+      return updated;
+    });
+    logAction('Create PO', 'Procurement', `PO #${po.id.slice(-6)} to ${po.supplierName}`, 'create');
+  };
+
+  const handleReceivePO = (po: PurchaseOrder) => {
+    setProducts(prev => {
+      const updatedProducts = [...prev];
+      po.items.forEach(item => {
+        const productIndex = updatedProducts.findIndex(p => p.id === item.productId);
+        if (productIndex > -1) {
+          const product = { ...updatedProducts[productIndex] };
+          
+          if (product.hasVariants && item.variantId) {
+             const vIndex = product.variants?.findIndex(v => v.id === item.variantId);
+             if (vIndex !== undefined && vIndex > -1 && product.variants) {
+               const variants = [...product.variants];
+               const currentStock = variants[vIndex].stockLevel;
+               const currentCost = variants[vIndex].costPrice;
+               const incomingQty = item.quantity;
+               const incomingCost = item.unitCost;
+               
+               // Weighted Average Cost Formula: (OldValue + NewValue) / TotalQty
+               const newAvgCost = ((currentStock * currentCost) + (incomingQty * incomingCost)) / (currentStock + incomingQty);
+
+               variants[vIndex] = { 
+                   ...variants[vIndex], 
+                   stockLevel: currentStock + incomingQty,
+                   costPrice: parseFloat(newAvgCost.toFixed(2)) // Store rounded for display
+               };
+               product.variants = variants;
+             }
+          } else {
+             const currentStock = product.stockLevel;
+             const currentCost = product.costPrice;
+             const incomingQty = item.quantity;
+             const incomingCost = item.unitCost;
+
+             const newAvgCost = ((currentStock * currentCost) + (incomingQty * incomingCost)) / (currentStock + incomingQty);
+
+             product.stockLevel += incomingQty;
+             product.costPrice = parseFloat(newAvgCost.toFixed(2));
+          }
+          updatedProducts[productIndex] = product;
+        }
+      });
+      ApiService.pushUpdate('products', updatedProducts);
+      return updatedProducts;
+    });
+
+    const expense: Expense = {
+      id: Date.now().toString(),
+      date: new Date().toISOString(),
+      category: 'Procurement',
+      description: `Stock Restock: PO #${po.id.slice(-6)}`,
+      amount: po.totalAmount,
+      paymentMethod: 'Bank Transfer', 
+      status: 'Paid',
+      referenceId: po.id
+    };
+    handleAddExpense(expense);
+
+    setPurchaseOrders(prev => {
+      const idx = prev.findIndex(p => p.id === po.id);
+      if (idx === -1) return prev;
+      const updated = [...prev];
+      updated[idx] = { ...updated[idx], status: 'Received' };
+      ApiService.pushUpdate('purchaseOrders', updated);
+      return updated;
+    });
+
+    logAction('Receive PO', 'Procurement', `Received goods for PO #${po.id.slice(-6)} & Updated Weighted Avg Costs`);
   };
 
   const toggleTheme = () => {
@@ -536,7 +631,6 @@ function App() {
                      const newVal = enteredPin + num;
                      setEnteredPin(newVal);
                      if (newVal.length === 4) {
-                       // Checking immediately state won't update fast enough in strict mode, but logic here for UX
                        if (newVal === pin) { setIsLocked(false); setEnteredPin(''); }
                        else { setLockError(true); setTimeout(() => {setLockError(false); setEnteredPin('')}, 500); }
                      }
@@ -586,14 +680,15 @@ function App() {
           {currentView === 'dashboard' && <Dashboard products={products} sales={sales} customers={customers} suppliers={suppliers} expenses={expenses} returns={returns} logs={logs} onNavigate={setCurrentView} theme={theme} />}
           {currentView === 'spreadsheet' && <SpreadsheetView products={products} sales={sales} customers={customers} suppliers={suppliers} expenses={expenses} onUpdateProduct={handleUpdateProduct} />}
           {currentView === 'inventory' && <Inventory products={products} suppliers={suppliers} onAddProduct={handleAddProduct} onUpdateProduct={handleUpdateProduct} onDeleteProduct={handleDeleteProduct} canUndo={false} canRedo={false} onUndo={() => {}} onRedo={() => {}} />}
+          {currentView === 'procurement' && <PurchaseOrders purchaseOrders={purchaseOrders} products={products} suppliers={suppliers} onCreatePO={handleCreatePO} onReceivePO={handleReceivePO} />}
           {currentView === 'sales' && <Sales sales={sales} products={products} customers={customers} onAddSale={handleAddSale} onUpdateSale={handleUpdateSale} onDeleteSale={handleDeleteSale} onAddCustomer={handleAddCustomer} onUndo={() => {}} onRedo={() => {}} onCommit={() => {}} canUndo={false} canRedo={false} isDirty={false} companyProfile={businessProfile} />}
           {currentView === 'customers' && <Customers customers={customers} sales={sales} onAdd={handleAddCustomer} onUpdate={handleUpdateCustomer} onDelete={handleDeleteCustomer} canUndo={false} canRedo={false} onUndo={() => {}} onRedo={() => {}} />}
           {currentView === 'suppliers' && <Suppliers suppliers={suppliers} products={products} onAdd={handleAddSupplier} onUpdate={handleUpdateSupplier} onDelete={handleDeleteSupplier} canUndo={false} canRedo={false} onUndo={() => {}} onRedo={() => {}} />}
           {currentView === 'expenses' && <Expenses expenses={expenses} onAdd={handleAddExpense} onUpdate={handleUpdateExpense} onDelete={handleDeleteExpense} />}
-          {currentView === 'returns' && <Returns returns={returns} sales={sales} onAdd={handleAddReturn} onUpdateStatus={handleUpdateReturnStatus} />}
-          {currentView === 'reports' && <Reports sales={sales} products={products} customers={customers} expenses={expenses} returns={returns} theme={theme} />}
+          {currentView === 'returns' && <Returns returns={returns} sales={sales} onAdd={handleAddReturn} onUpdateStatus={handleUpdateReturnStatus} onAddExpense={handleAddExpense} />}
+          {currentView === 'reports' && <Reports sales={sales} products={products} customers={customers} expenses={expenses} returns={returns} periodSummaries={periodSummaries} onUpdateSummaries={handleUpdatePeriodSummaries} theme={theme} />}
           {currentView === 'calculator' && <PriceCalculator />}
-          {currentView === 'tester' && <WorkflowTester onAddProduct={handleAddProduct} onAddSale={handleAddSale} onAddReturn={handleAddReturn} onUpdateReturnStatus={handleUpdateReturnStatus} onAddCustomer={handleAddCustomer} onAddSupplier={handleAddSupplier} onAddExpense={handleAddExpense} onDeleteProduct={handleDeleteProduct} onDeleteSale={handleDeleteSale} onDeleteCustomer={handleDeleteCustomer} onDeleteSupplier={handleDeleteSupplier} onDeleteExpense={handleDeleteExpense} />}
+          {currentView === 'tester' && <WorkflowTester onAddProduct={handleAddProduct} onAddSale={handleAddSale} onAddReturn={handleAddReturn} onUpdateReturnStatus={handleUpdateReturnStatus} onAddCustomer={handleAddCustomer} onAddSupplier={handleAddSupplier} onAddExpense={handleAddExpense} onUpdateSale={handleUpdateSale} onCreatePO={handleCreatePO} onReceivePO={handleReceivePO} onDeleteProduct={handleDeleteProduct} onDeleteSale={handleDeleteSale} onDeleteCustomer={handleDeleteCustomer} onDeleteSupplier={handleDeleteSupplier} onDeleteExpense={handleDeleteExpense} />}
           {currentView === 'advisor' && <Advisor products={products} sales={sales} />}
           {currentView === 'audit' && <AuditTrail logs={logs} />}
           {currentView === 'settings' && <Settings products={products} sales={sales} customers={customers} suppliers={suppliers} expenses={expenses} returns={returns} onFactoryReset={handleFactoryReset} businessProfile={businessProfile} onUpdateProfile={handleUpdateProfile} onUpdatePin={handleUpdatePin} />}

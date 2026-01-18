@@ -21,8 +21,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ products, sales, customers
 
   // Financial Calculations - Filtered by Month
   const monthlySales = useMemo(() => sales.filter(s => s.date.startsWith(selectedMonth)), [sales, selectedMonth]);
-  const completedSales = useMemo(() => monthlySales.filter(s => s.status === 'Completed'), [monthlySales]);
-  const monthlyExpenses = useMemo(() => expenses.filter(e => e.date.startsWith(selectedMonth)), [expenses, selectedMonth]);
+  
+  // Confirmed and Delivered are considered completed/valid sales for revenue, matching GAS logic where 'Sales' sheet is populated on confirmation.
+  const completedSales = useMemo(() => monthlySales.filter(s => s.status === 'Confirmed' || s.status === 'Delivered'), [monthlySales]);
+  
+  const monthlyExpenses = useMemo(() => expenses.filter(e => e.date.startsWith(selectedMonth) && e.status === 'Paid'), [expenses, selectedMonth]);
   const monthlyReturns = useMemo(() => returns.filter(r => r.date.startsWith(selectedMonth) && r.status === 'Approved'), [returns, selectedMonth]);
 
   const grossRevenue = completedSales.reduce((acc, curr) => acc + curr.totalAmount, 0);
@@ -50,7 +53,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ products, sales, customers
 
     return months.map(month => {
       const monthRevenue = sales
-        .filter(s => s.date.startsWith(month) && s.status === 'Completed')
+        .filter(s => s.date.startsWith(month) && (s.status === 'Confirmed' || s.status === 'Delivered'))
         .reduce((sum, s) => sum + s.totalAmount, 0);
       
       const monthRefunds = returns
@@ -68,7 +71,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ products, sales, customers
   const recentActivity = logs.slice(0, 5);
 
   // --- SMART ONBOARDING / EMPTY STATE ---
-  // If the database is empty (no products), we show the initialization guide.
   if (products.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[85vh] text-center space-y-10 animate-in fade-in zoom-in duration-500 pb-20">

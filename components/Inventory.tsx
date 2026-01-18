@@ -1,11 +1,11 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Product, ProductVariant, Supplier } from '../types';
-import { Plus, Edit2, Trash2, Search, X, Undo2, Redo2, Layers, Package, ImageIcon, Upload, Image as ImageIconLucide, ChevronLeft, ChevronRight, Filter, ChevronDown, AlertCircle } from 'lucide-react';
+import { Plus, Edit2, Trash2, Search, X, Undo2, Redo2, Layers, Package, ImageIcon, Upload, Image as ImageIconLucide, ChevronLeft, ChevronRight, Filter, ChevronDown, AlertCircle, AlertTriangle } from 'lucide-react';
 
 interface InventoryProps {
   products: Product[];
-  suppliers: Supplier[]; // Added suppliers prop
+  suppliers: Supplier[];
   onAddProduct: (p: Product) => void;
   onUpdateProduct: (p: Product) => void;
   onDeleteProduct: (id: string) => void;
@@ -39,7 +39,6 @@ export const Inventory: React.FC<InventoryProps> = ({
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Responsive page sizing
   useEffect(() => {
     const handleResize = () => {
       setItemsPerPage(window.innerWidth < 1024 ? 5 : 10);
@@ -50,7 +49,7 @@ export const Inventory: React.FC<InventoryProps> = ({
   }, []);
 
   const [formData, setFormData] = useState<Partial<Product>>({
-    sku: '', name: '', category: 'Furniture', costPrice: 0, sellingPrice: 0, stockLevel: 0, hasVariants: false, variants: [], image: '', supplierId: ''
+    sku: '', name: '', category: 'Furniture', costPrice: 0, sellingPrice: 0, stockLevel: 0, minStockLevel: 5, hasVariants: false, variants: [], image: '', supplierId: ''
   });
 
   const filteredProducts = products.filter(p => {
@@ -63,7 +62,6 @@ export const Inventory: React.FC<InventoryProps> = ({
     return matchesSearch && matchesCategory;
   });
 
-  // Pagination Logic
   const totalPages = Math.ceil(filteredProducts.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const paginatedProducts = filteredProducts.slice(startIndex, startIndex + itemsPerPage);
@@ -79,7 +77,7 @@ export const Inventory: React.FC<InventoryProps> = ({
       setFormData({ ...product });
     } else {
       setEditingId(null);
-      setFormData({ sku: '', name: '', category: 'Furniture', costPrice: 0, sellingPrice: 0, stockLevel: 0, hasVariants: false, variants: [], image: '', supplierId: '' });
+      setFormData({ sku: '', name: '', category: 'Furniture', costPrice: 0, sellingPrice: 0, stockLevel: 0, minStockLevel: 5, hasVariants: false, variants: [], image: '', supplierId: '' });
     }
     setIsModalOpen(true);
   };
@@ -102,7 +100,8 @@ export const Inventory: React.FC<InventoryProps> = ({
       name: '',
       costPrice: formData.costPrice || 0,
       sellingPrice: formData.sellingPrice || 0,
-      stockLevel: 0
+      stockLevel: 0,
+      minStockLevel: 5
     };
     setFormData({ ...formData, variants: [...(formData.variants || []), newVariant] });
   };
@@ -121,7 +120,6 @@ export const Inventory: React.FC<InventoryProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    // SKU Uniqueness Check
     if (!formData.hasVariants) {
       const existingProduct = products.find(p => p.sku === formData.sku && p.id !== editingId);
       if (existingProduct) {
@@ -204,6 +202,11 @@ export const Inventory: React.FC<InventoryProps> = ({
                 const totalStock = product.hasVariants ? product.variants?.reduce((a, b) => a + b.stockLevel, 0) : product.stockLevel;
                 const supplier = suppliers.find(s => s.id === product.supplierId);
                 
+                // Determine low stock status
+                const isLowStock = product.hasVariants 
+                  ? product.variants?.some(v => v.stockLevel <= (v.minStockLevel || 5))
+                  : product.stockLevel <= (product.minStockLevel || 5);
+
                 const minRetail = product.hasVariants ? Math.min(...(product.variants?.map(v => v.sellingPrice) || [0])) : product.sellingPrice;
                 const maxRetail = product.hasVariants ? Math.max(...(product.variants?.map(v => v.sellingPrice) || [0])) : product.sellingPrice;
                 
@@ -215,11 +218,11 @@ export const Inventory: React.FC<InventoryProps> = ({
                     <td className="px-8 py-6 relative">
                       <div className="flex items-center gap-4">
                         <div className="relative group/image-trigger">
-                          <div className="w-12 h-12 rounded-xl bg-slate-100 dark:bg-slate-800 overflow-hidden flex items-center justify-center border border-slate-200 dark:border-slate-700 cursor-zoom-in group-hover/image-trigger:ring-2 ring-indigo-500 transition-all">
+                          <div className={`w-12 h-12 rounded-xl overflow-hidden flex items-center justify-center border cursor-zoom-in group-hover/image-trigger:ring-2 ring-indigo-500 transition-all ${isLowStock ? 'bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-900/50' : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`}>
                             {product.image ? (
                               <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
                             ) : (
-                              <ImageIconLucide size={20} className="text-slate-400 dark:text-slate-500" />
+                              isLowStock ? <AlertTriangle size={20} className="text-red-500" /> : <ImageIconLucide size={20} className="text-slate-400 dark:text-slate-500" />
                             )}
                           </div>
                           {product.image && (
@@ -236,7 +239,10 @@ export const Inventory: React.FC<InventoryProps> = ({
                         </div>
                         <div className="flex flex-col">
                           <span className="font-bold text-slate-800 dark:text-slate-200">{product.name}</span>
-                          <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400 uppercase tracking-tight font-semibold">{product.hasVariants ? 'Multi-SKU Config' : product.sku}</span>
+                          <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400 uppercase tracking-tight font-semibold flex items-center gap-1">
+                            {product.hasVariants ? 'Multi-SKU Config' : product.sku}
+                            {isLowStock && <span className="text-red-500 font-bold flex items-center gap-0.5 ml-1"><AlertCircle size={10} /> Low Stock</span>}
+                          </span>
                         </div>
                       </div>
                     </td>
@@ -246,7 +252,7 @@ export const Inventory: React.FC<InventoryProps> = ({
                         <span className="text-[9px] text-slate-400 font-medium truncate max-w-[120px]">{supplier ? supplier.name : 'Unknown Source'}</span>
                       </div>
                     </td>
-                    <td className={`px-8 py-6 text-right font-mono font-bold ${totalStock! < 10 ? 'text-red-600 dark:text-red-400' : 'text-slate-700 dark:text-slate-200'}`}>
+                    <td className={`px-8 py-6 text-right font-mono font-bold ${isLowStock ? 'text-red-600 dark:text-red-400' : 'text-slate-700 dark:text-slate-200'}`}>
                       {totalStock}
                     </td>
                     <td className="px-8 py-6 text-right font-bold text-slate-500 dark:text-slate-400 tracking-tight text-xs font-mono">
@@ -397,6 +403,10 @@ export const Inventory: React.FC<InventoryProps> = ({
                           <input type="number" className="w-full p-3.5 bg-white dark:bg-slate-800 border border-indigo-100 dark:border-indigo-500/20 rounded-xl dark:text-white font-mono" value={formData.stockLevel} onChange={e => setFormData({...formData, stockLevel: Number(e.target.value)})} />
                         </div>
                         <div className="col-span-2 md:col-span-1">
+                          <label className="block text-[10px] font-black uppercase text-indigo-600 dark:text-indigo-400 tracking-widest mb-1">Min Stock (Alert)</label>
+                          <input type="number" className="w-full p-3.5 bg-white dark:bg-slate-800 border border-indigo-100 dark:border-indigo-500/20 rounded-xl dark:text-white font-mono" value={formData.minStockLevel || 5} onChange={e => setFormData({...formData, minStockLevel: Number(e.target.value)})} />
+                        </div>
+                        <div className="col-span-2 md:col-span-2">
                           <label className="block text-[10px] font-black uppercase text-indigo-600 dark:text-indigo-400 tracking-widest mb-1">Cost (৳)</label>
                           <input type="number" step="0.01" className="w-full p-3.5 bg-white dark:bg-slate-800 border border-indigo-100 dark:border-indigo-500/20 rounded-xl dark:text-white" value={formData.costPrice} onChange={e => setFormData({...formData, costPrice: Number(e.target.value)})} />
                         </div>
@@ -408,7 +418,7 @@ export const Inventory: React.FC<InventoryProps> = ({
                     ) : (
                       <div className="p-6 bg-indigo-100/30 dark:bg-indigo-500/10 rounded-2xl flex items-center gap-4 text-indigo-700 dark:text-indigo-300">
                         <Layers size={24} />
-                        <p className="text-xs font-bold leading-relaxed uppercase tracking-wide">Variant-specific details are configured at the bottom of the form.</p>
+                        <p className="text-xs font-bold leading-relaxed uppercase tracking-wide">Variant-specific details (Stock, Price, Reorder Points) are configured below.</p>
                       </div>
                     )}
                   </div>
@@ -461,6 +471,7 @@ export const Inventory: React.FC<InventoryProps> = ({
                           <th className="px-6 py-4 w-24">Cost (৳)</th>
                           <th className="px-6 py-4 w-28">Price (৳)</th>
                           <th className="px-6 py-4 w-20">Stock</th>
+                          <th className="px-6 py-4 w-20">Min Stock</th>
                           <th className="px-6 py-4 text-right">Actions</th>
                         </tr>
                       </thead>
@@ -481,6 +492,9 @@ export const Inventory: React.FC<InventoryProps> = ({
                             </td>
                             <td className="px-6 py-3">
                               <input type="number" className="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-transparent focus:border-indigo-300 outline-none dark:text-white font-mono" value={v.stockLevel} onChange={e => handleUpdateVariant(idx, 'stockLevel', Number(e.target.value))} />
+                            </td>
+                            <td className="px-6 py-3">
+                              <input type="number" className="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-transparent focus:border-indigo-300 outline-none dark:text-white font-mono" value={v.minStockLevel || 5} onChange={e => handleUpdateVariant(idx, 'minStockLevel', Number(e.target.value))} />
                             </td>
                             <td className="px-6 py-3 text-right">
                               <button type="button" onClick={() => handleRemoveVariant(idx)} className="p-2.5 text-slate-400 hover:text-red-500 transition-colors"><Trash2 size={16} /></button>

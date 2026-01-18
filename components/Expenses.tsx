@@ -1,7 +1,7 @@
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Expense } from '../types';
-import { Plus, Trash2, Wallet, X, TrendingDown, Receipt, Edit2 } from 'lucide-react';
+import { Plus, Trash2, Wallet, X, TrendingDown, Receipt, Edit2, PieChart } from 'lucide-react';
 
 interface ExpensesProps {
   expenses: Expense[];
@@ -52,6 +52,15 @@ export const Expenses: React.FC<ExpensesProps> = ({ expenses, onAdd, onUpdate, o
 
   const totalExpenses = expenses.reduce((acc, curr) => acc + curr.amount, 0);
 
+  // Group by Category
+  const expensesByCategory = useMemo(() => {
+    const acc: Record<string, number> = {};
+    expenses.forEach(e => {
+        acc[e.category] = (acc[e.category] || 0) + e.amount;
+    });
+    return Object.entries(acc).sort((a,b) => b[1] - a[1]);
+  }, [expenses]);
+
   return (
     <div className="space-y-8">
       <div className="flex justify-between items-center">
@@ -65,12 +74,26 @@ export const Expenses: React.FC<ExpensesProps> = ({ expenses, onAdd, onUpdate, o
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-red-50 dark:bg-red-500/10 p-8 rounded-[2.5rem] border border-red-100 dark:border-red-500/20">
-           <div className="flex items-center gap-3 mb-4 text-red-600 dark:text-red-400">
-             <TrendingDown size={24} />
-             <h4 className="font-black uppercase tracking-widest text-xs">Total Outflow</h4>
+        <div className="bg-red-50 dark:bg-red-500/10 p-8 rounded-[2.5rem] border border-red-100 dark:border-red-500/20 flex flex-col justify-between">
+           <div>
+             <div className="flex items-center gap-3 mb-4 text-red-600 dark:text-red-400">
+               <TrendingDown size={24} />
+               <h4 className="font-black uppercase tracking-widest text-xs">Total Outflow</h4>
+             </div>
+             <p className="text-4xl font-serif font-bold text-slate-900 dark:text-white tracking-tighter">৳{totalExpenses.toLocaleString()}</p>
            </div>
-           <p className="text-4xl font-serif font-bold text-slate-900 dark:text-white tracking-tighter">৳{totalExpenses.toLocaleString()}</p>
+           
+           <div className="mt-6 pt-6 border-t border-red-200 dark:border-red-500/20">
+              <h5 className="text-[10px] font-black uppercase text-slate-400 mb-3 flex items-center gap-2"><PieChart size={12}/> Top Categories</h5>
+              <div className="space-y-2">
+                  {expensesByCategory.slice(0, 3).map(([cat, amount], idx) => (
+                      <div key={cat} className="flex justify-between text-xs">
+                          <span className="font-bold text-slate-600 dark:text-slate-300">{idx+1}. {cat}</span>
+                          <span className="font-mono text-slate-500">৳{amount.toLocaleString()}</span>
+                      </div>
+                  ))}
+              </div>
+           </div>
         </div>
         
         <div className="md:col-span-2 bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 p-8 shadow-sm">
@@ -78,8 +101,8 @@ export const Expenses: React.FC<ExpensesProps> = ({ expenses, onAdd, onUpdate, o
               <Receipt size={20} className="text-indigo-500" />
               <h4 className="font-bold text-slate-900 dark:text-white">Recent Transactions</h4>
            </div>
-           <div className="overflow-y-auto max-h-[200px] custom-scrollbar space-y-3">
-             {expenses.map(exp => (
+           <div className="overflow-y-auto max-h-[300px] custom-scrollbar space-y-3">
+             {expenses.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(exp => (
                <div key={exp.id} className="flex justify-between items-center p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700">
                   <div className="flex items-center gap-4">
                      <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-slate-500 dark:text-slate-400 font-bold text-xs uppercase">
@@ -87,7 +110,7 @@ export const Expenses: React.FC<ExpensesProps> = ({ expenses, onAdd, onUpdate, o
                      </div>
                      <div>
                         <p className="font-bold text-slate-900 dark:text-white text-sm">{exp.description}</p>
-                        <p className="text-[10px] uppercase font-black text-slate-400">{exp.date} • {exp.paymentMethod}</p>
+                        <p className="text-[10px] uppercase font-black text-slate-400">{exp.date} • {exp.category} • {exp.paymentMethod}</p>
                      </div>
                   </div>
                   <div className="text-right flex items-center gap-3">
@@ -124,7 +147,7 @@ export const Expenses: React.FC<ExpensesProps> = ({ expenses, onAdd, onUpdate, o
                     <div>
                        <label className="block text-[10px] uppercase font-black text-slate-400 tracking-widest mb-1.5 ml-1">Category</label>
                        <select className="w-full p-3 bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white font-bold" value={newExpense.category} onChange={e => setNewExpense({...newExpense, category: e.target.value as any})}>
-                          <option>Rent</option><option>Utilities</option><option>Salaries</option><option>Marketing</option><option>Logistics</option><option>Maintenance</option><option>Other</option>
+                          <option>Rent</option><option>Utilities</option><option>Salaries</option><option>Marketing</option><option>Logistics</option><option>Maintenance</option><option>Procurement</option><option>Other</option>
                        </select>
                     </div>
                  </div>

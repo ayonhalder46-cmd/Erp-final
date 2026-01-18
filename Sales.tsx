@@ -5,7 +5,7 @@ import {
   Plus, Trash2, X, Undo2, Redo2, 
   Search, ShoppingCart, Package, ArrowRight, Layers, 
   Minus, ShoppingBag, Tag, AlertTriangle, Hash, User,
-  Filter, Eye, CheckCircle2, Clock, Ban, ChevronLeft, ChevronRight, Truck, Calendar, Printer, RefreshCw, MapPin
+  Filter, Eye, CheckCircle2, Clock, Ban, ChevronLeft, ChevronRight, Truck, Calendar, Printer, RefreshCw, MapPin, ChevronDown, Award, Wallet, RotateCcw, Edit
 } from 'lucide-react';
 
 interface SalesProps {
@@ -30,13 +30,104 @@ const CATEGORIES = [
   'Wall Decor', 'Kitchenware', 'Garden', 'Accessories'
 ];
 
-const ORDER_STATUSES = ['All', 'Completed', 'Pending', 'Cancelled'];
+// Aligned strictly with Google Sheets "STATUS_OPTIONS"
+const ORDER_STATUSES = ['All', 'Pending', 'Confirmed', 'Delivered', 'Returned', 'Cancelled'];
 
 // Helper for local date
 const getLocalDate = () => {
   const d = new Date();
   d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
   return d.toISOString().split('T')[0];
+};
+
+interface PosProductCardProps {
+  product: Product;
+  onAdd: (product: Product, variant?: ProductVariant, qty?: number) => void;
+  cartItems: SaleItem[];
+}
+
+const PosProductCard: React.FC<PosProductCardProps> = ({ product, onAdd, cartItems }) => {
+  const getStockStatus = (stock: number, minStock: number) => {
+    if (stock <= 0) return { label: 'Out of Stock', color: 'text-red-500 bg-red-50 dark:bg-red-500/10' };
+    if (stock <= minStock) return { label: 'Low Stock', color: 'text-amber-500 bg-amber-50 dark:bg-amber-500/10' };
+    return { label: `${stock} In Stock`, color: 'text-slate-500 bg-slate-100 dark:bg-slate-800' };
+  };
+
+  const getItemCount = (variantId?: string) => {
+    const item = cartItems.find(i => i.productId === product.id && i.variantId === variantId);
+    return item ? item.quantity : 0;
+  };
+
+  return (
+    <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-indigo-500 dark:hover:border-indigo-500 transition-all group flex flex-col h-full shadow-sm hover:shadow-lg">
+      <div className="flex justify-between items-start mb-3">
+         <div className="w-12 h-12 rounded-xl bg-slate-100 dark:bg-slate-800 overflow-hidden flex items-center justify-center border border-slate-200 dark:border-slate-700">
+           {product.image ? (
+             <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
+           ) : (
+             <Package size={20} className="text-slate-400" />
+           )}
+         </div>
+         <div className="text-right">
+            <p className="font-mono font-bold text-indigo-600 dark:text-indigo-400">
+               ৳{product.hasVariants 
+                 ? Math.min(...(product.variants?.map(v => v.sellingPrice) || [0])).toLocaleString() 
+                 : product.sellingPrice.toLocaleString()}
+            </p>
+         </div>
+      </div>
+      
+      <div className="flex-1 mb-4">
+        <h4 className="font-bold text-slate-800 dark:text-white text-sm leading-tight line-clamp-2" title={product.name}>{product.name}</h4>
+        <p className="text-[10px] text-slate-400 font-mono mt-1">{product.sku}</p>
+      </div>
+
+      {!product.hasVariants ? (
+        <div className="space-y-3 mt-auto">
+           <div className={`text-[10px] font-bold px-2 py-1 rounded w-fit ${getStockStatus(product.stockLevel, product.minStockLevel || 5).color}`}>
+             {getStockStatus(product.stockLevel, product.minStockLevel || 5).label}
+           </div>
+           <button 
+             onClick={() => onAdd(product)}
+             disabled={product.stockLevel <= 0}
+             className="w-full py-2.5 bg-slate-900 dark:bg-indigo-600 text-white rounded-xl font-bold text-xs hover:bg-slate-800 dark:hover:bg-indigo-500 active:scale-95 disabled:opacity-50 disabled:active:scale-100 transition-all flex items-center justify-center gap-2"
+           >
+             {getItemCount() > 0 ? (
+               <><div className="w-4 h-4 rounded-full bg-white text-black flex items-center justify-center text-[9px]">{getItemCount()}</div> Add More</>
+             ) : (
+               <><Plus size={14}/> Add to Bag</>
+             )}
+           </button>
+        </div>
+      ) : (
+        <div className="space-y-2 mt-auto">
+          <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Variants</p>
+          <div className="space-y-2 max-h-32 overflow-y-auto custom-scrollbar pr-1">
+            {product.variants?.map(v => (
+              <div key={v.id} className="flex justify-between items-center p-2 bg-slate-50 dark:bg-slate-800 rounded-lg text-xs">
+                 <div className="min-w-0 flex-1 mr-2">
+                   <p className="font-bold truncate" title={v.name}>{v.name}</p>
+                   <p className="text-[9px] text-slate-500">Stock: {v.stockLevel}</p>
+                 </div>
+                 <div className="flex items-center gap-2">
+                   {getItemCount(v.id) > 0 && (
+                     <span className="text-[9px] font-bold text-indigo-500">{getItemCount(v.id)} in cart</span>
+                   )}
+                   <button 
+                     onClick={() => onAdd(product, v)}
+                     disabled={v.stockLevel <= 0}
+                     className="p-1.5 bg-white dark:bg-slate-700 hover:bg-indigo-600 hover:text-white dark:hover:bg-indigo-500 rounded-lg border border-slate-200 dark:border-slate-600 transition-colors disabled:opacity-30"
+                   >
+                     <Plus size={12}/>
+                   </button>
+                 </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 };
 
 export const Sales: React.FC<SalesProps> = ({ 
@@ -82,8 +173,10 @@ export const Sales: React.FC<SalesProps> = ({
     discountAmount: 0,
     deliveryCharge: 0,
     notes: '',
-    status: 'Completed'
+    status: 'Confirmed'
   });
+
+  const [editingSaleId, setEditingSaleId] = useState<string | null>(null);
 
   const [quickCustomer, setQuickCustomer] = useState<Partial<Customer>>({
     name: '', address: '', phone: '', tier: 'Bronze', totalSpent: 0, lastPurchaseDate: 'N/A'
@@ -93,6 +186,13 @@ export const Sales: React.FC<SalesProps> = ({
     customers.find(c => c.id === newSale.customerId), 
     [customers, newSale.customerId]
   );
+
+  // Derive VIP Stats like in the GAS "New_Order" Sheet logic
+  const vipStats = useMemo(() => {
+    if (!selectedCustomer) return null;
+    const orderCount = sales.filter(s => s.customerId === selectedCustomer.id && s.status !== 'Cancelled').length;
+    return { count: orderCount, total: selectedCustomer.totalSpent };
+  }, [selectedCustomer, sales]);
 
   const filteredCustomers = useMemo(() => {
     return customers.filter(c => 
@@ -157,7 +257,8 @@ export const Sales: React.FC<SalesProps> = ({
     const currentQtyInCart = itemInCart?.quantity || 0;
     
     // Only verify stock limit when adding items (qty > 0)
-    if (qty > 0 && currentQtyInCart + qty > currentStock) {
+    // Note: When editing an existing order, the logic handles restoration, so we allow "re-adding" own items implicitly.
+    if (qty > 0 && currentQtyInCart + qty > currentStock && !editingSaleId) {
       alert(`Cannot add more items. Max stock available: ${currentStock}`);
       return;
     }
@@ -184,8 +285,8 @@ export const Sales: React.FC<SalesProps> = ({
   const handleSubmit = () => {
     if (!newSale.customerId || !newSale.items?.length) return;
 
-    // Strict Stock Check before submission
-    if (newSale.status !== 'Cancelled') {
+    // Strict Stock Check before submission if status is Confirmed/Delivered
+    if (!editingSaleId && (newSale.status === 'Confirmed' || newSale.status === 'Delivered')) {
       for (const item of newSale.items) {
         const product = products.find(p => p.id === item.productId);
         if (product) {
@@ -207,8 +308,8 @@ export const Sales: React.FC<SalesProps> = ({
     const total = Math.max(0, subtotal - (newSale.discountAmount || 0) + (newSale.deliveryCharge || 0));
     const cost = saleItems.reduce((sum, item) => sum + (item.unitCost * item.quantity), 0);
     
-    onAddSale({
-      id: Date.now().toString(), 
+    const finalSaleData: Sale = {
+      id: editingSaleId || Date.now().toString(), 
       date: newSale.date || getLocalDate(),
       customerId: newSale.customerId!, 
       customerName: selectedCustomer?.name || 'Unknown',
@@ -219,19 +320,42 @@ export const Sales: React.FC<SalesProps> = ({
       totalCost: cost, 
       profit: total - cost,
       notes: newSale.notes || '', 
-      status: (newSale.status as any) || 'Completed'
-    });
+      status: (newSale.status as any) || 'Confirmed' // Default to Confirmed for POS (deducts stock)
+    };
+
+    if (editingSaleId) {
+      onUpdateSale(finalSaleData);
+    } else {
+      onAddSale(finalSaleData);
+    }
     
     setIsModalOpen(false);
-    setNewSale({ date: getLocalDate(), customerId: '', items: [], discountAmount: 0, deliveryCharge: 0, notes: '', status: 'Completed' });
-    setCustomerSearch('');
+    resetForm();
   };
 
-  const handleUpdateStatus = (newStatus: 'Completed' | 'Pending' | 'Cancelled') => {
-    if (selectedOrder && selectedOrder.status !== newStatus) {
-        if(confirm(`Change order status from ${selectedOrder.status} to ${newStatus}? This may affect inventory levels.`)) {
-            onUpdateSale({ ...selectedOrder, status: newStatus });
-            setSelectedOrder({ ...selectedOrder, status: newStatus }); // Optimistic UI update
+  const resetForm = () => {
+    setNewSale({ date: getLocalDate(), customerId: '', items: [], discountAmount: 0, deliveryCharge: 0, notes: '', status: 'Confirmed' });
+    setCustomerSearch('');
+    setEditingSaleId(null);
+  };
+
+  const handleEditOrder = (sale: Sale) => {
+    setEditingSaleId(sale.id);
+    setNewSale({
+      ...sale,
+      items: [...sale.items] // Clone items
+    });
+    setCustomerSearch(sale.customerName);
+    setSelectedOrder(null); // Close details modal
+    setIsModalOpen(true); // Open POS modal
+  };
+
+  const handleStatusChange = (sale: Sale, newStatus: Sale['status']) => {
+    if (sale.status !== newStatus) {
+        const updatedSale = { ...sale, status: newStatus };
+        onUpdateSale(updatedSale);
+        if (selectedOrder && selectedOrder.id === sale.id) {
+            setSelectedOrder(updatedSale);
         }
     }
   };
@@ -284,6 +408,7 @@ export const Sales: React.FC<SalesProps> = ({
               <h2>Invoice / Receipt</h2>
               <p>#${order.id.slice(-6)}</p>
               <p style="font-weight: normal; font-size: 12px; margin-top: 4px;">${new Date(order.date).toLocaleDateString()}</p>
+              <p style="font-weight: normal; font-size: 12px; margin-top: 2px; text-transform: uppercase;">Status: ${order.status}</p>
             </div>
           </div>
 
@@ -359,8 +484,10 @@ export const Sales: React.FC<SalesProps> = ({
 
   const getStatusStyle = (status: string) => {
     switch(status) {
-      case 'Completed': return 'bg-green-100 text-green-700 border-green-200 dark:bg-green-500/10 dark:text-green-400 dark:border-green-500/20';
+      case 'Confirmed': return 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/20';
+      case 'Delivered': return 'bg-green-100 text-green-700 border-green-200 dark:bg-green-500/10 dark:text-green-400 dark:border-green-500/20';
       case 'Pending': return 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20';
+      case 'Returned': return 'bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-500/10 dark:text-purple-400 dark:border-purple-500/20';
       case 'Cancelled': return 'bg-red-100 text-red-700 border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20';
       default: return 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700';
     }
@@ -368,14 +495,15 @@ export const Sales: React.FC<SalesProps> = ({
 
   const getStatusIcon = (status: string) => {
     switch(status) {
-      case 'Completed': return <CheckCircle2 size={10} />;
+      case 'Confirmed': return <CheckCircle2 size={10} />;
+      case 'Delivered': return <Truck size={10} />;
       case 'Pending': return <Clock size={10} />;
+      case 'Returned': return <RotateCcw size={10} />;
       case 'Cancelled': return <Ban size={10} />;
       default: return null;
     }
   };
 
-  // Helper to find customer address for detail view
   const getOrderCustomer = (orderId: string, customerId: string) => {
     return customers.find(c => c.id === customerId);
   };
@@ -395,7 +523,7 @@ export const Sales: React.FC<SalesProps> = ({
             <div className="w-[1px] bg-slate-100 dark:bg-slate-800 mx-1" />
             <button onClick={onRedo} disabled={!canRedo} className="p-2 text-slate-400 hover:text-indigo-600 disabled:opacity-20 transition-all"><Redo2 size={18}/></button>
           </div>
-          <button onClick={() => setIsModalOpen(true)} className="flex-1 md:flex-none bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3.5 rounded-2xl flex items-center justify-center gap-2 transition-all shadow-xl font-bold active:scale-95">
+          <button onClick={() => { resetForm(); setIsModalOpen(true); }} className="flex-1 md:flex-none bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3.5 rounded-2xl flex items-center justify-center gap-2 transition-all shadow-xl font-bold active:scale-95">
             <Plus size={18} /> POS Terminal
           </button>
         </div>
@@ -459,18 +587,40 @@ export const Sales: React.FC<SalesProps> = ({
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {paginatedSales.map((sale) => (
-                <tr key={sale.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors group">
+                <tr 
+                  key={sale.id} 
+                  onClick={() => setSelectedOrder(sale)} 
+                  className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors group cursor-pointer"
+                >
                   <td className="px-8 py-6 font-mono text-slate-400 text-xs">#{sale.id.slice(-6)}</td>
                   <td className="px-8 py-6 text-slate-600 dark:text-slate-300 font-bold">{formatDate(sale.date)}</td>
                   <td className="px-8 py-6 font-bold text-slate-900 dark:text-white">{sale.customerName}</td>
-                  <td className="px-8 py-6">
-                    <span className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border flex items-center gap-1.5 w-fit ${getStatusStyle(sale.status)}`}>
-                      {getStatusIcon(sale.status)}
-                      {sale.status}
-                    </span>
+                  <td className="px-8 py-6" onClick={(e) => e.stopPropagation()}>
+                    <div className="relative group/status inline-block">
+                        <select
+                            value={sale.status}
+                            onChange={(e) => handleStatusChange(sale, e.target.value as any)}
+                            disabled={sale.status === 'Returned' || sale.status === 'Cancelled'}
+                            className={`appearance-none pl-8 pr-8 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border outline-none cursor-pointer focus:ring-2 focus:ring-offset-1 focus:ring-indigo-500 transition-all ${getStatusStyle(sale.status)} ${(sale.status === 'Returned' || sale.status === 'Cancelled') ? 'opacity-70 cursor-not-allowed' : ''}`}
+                        >
+                            <option value="Pending">Pending</option>
+                            <option value="Confirmed">Confirmed</option>
+                            <option value="Delivered">Delivered</option>
+                            <option value="Returned">Returned</option>
+                            <option value="Cancelled">Cancelled</option>
+                        </select>
+                        <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                            {getStatusIcon(sale.status)}
+                        </div>
+                        {!(sale.status === 'Returned' || sale.status === 'Cancelled') && (
+                            <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none opacity-50">
+                                <ChevronDown size={10} />
+                            </div>
+                        )}
+                    </div>
                   </td>
                   <td className="px-8 py-6 text-right font-mono font-bold text-slate-900 dark:text-white tracking-tighter">৳{sale.totalAmount.toLocaleString()}</td>
-                  <td className="px-8 py-6 text-right">
+                  <td className="px-8 py-6 text-right" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-end gap-1">
                       <button onClick={() => setSelectedOrder(sale)} className="p-2 text-slate-400 hover:text-indigo-600 transition-all hover:bg-indigo-50 dark:hover:bg-indigo-500/10 rounded-xl"><Eye size={18} /></button>
                       <button onClick={() => setSaleToDeleteId(sale.id)} className="p-2 text-slate-400 hover:text-red-500 transition-all hover:bg-red-50 dark:hover:bg-red-500/10 rounded-xl"><Trash2 size={18} /></button>
@@ -513,23 +663,28 @@ export const Sales: React.FC<SalesProps> = ({
                       <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white shadow-lg">
                         <ShoppingCart size={20} />
                       </div>
-                      <h3 className="text-xl font-serif font-bold text-slate-900 dark:text-white">POS Terminal</h3>
+                      <div>
+                        <h3 className="text-xl font-serif font-bold text-slate-900 dark:text-white">POS Terminal</h3>
+                        {editingSaleId && <p className="text-[10px] text-amber-500 font-bold uppercase tracking-widest">Editing Order #{editingSaleId.slice(-6)}</p>}
+                      </div>
                    </div>
-                   <button onClick={() => setIsModalOpen(false)} className="p-2 bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-red-500 rounded-full transition-all"><X size={18}/></button>
+                   <button onClick={() => { setIsModalOpen(false); resetForm(); }} className="p-2 bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-red-500 rounded-full transition-all"><X size={18}/></button>
                 </div>
 
                 {/* Client Selection */}
                 <div className="w-full max-w-lg">
                    {selectedCustomer ? (
-                     <div className="flex items-center gap-3 p-2.5 bg-indigo-50 dark:bg-indigo-500/10 rounded-xl border border-indigo-200 dark:border-indigo-500/20 animate-in slide-in-from-left-4">
-                        <div className="w-8 h-8 bg-indigo-600 text-white rounded-lg flex items-center justify-center text-sm font-bold">
-                          {selectedCustomer.name.charAt(0)}
+                     <div className="flex flex-col gap-3">
+                        <div className="flex items-center gap-3 p-2.5 bg-indigo-50 dark:bg-indigo-500/10 rounded-xl border border-indigo-200 dark:border-indigo-500/20 animate-in slide-in-from-left-4">
+                            <div className="w-8 h-8 bg-indigo-600 text-white rounded-lg flex items-center justify-center text-sm font-bold">
+                            {selectedCustomer.name.charAt(0)}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                            <h4 className="font-bold text-slate-900 dark:text-white text-[11px] truncate uppercase">{selectedCustomer.name}</h4>
+                            <p className="text-[8px] font-black uppercase text-indigo-500">{selectedCustomer.tier} Partner</p>
+                            </div>
+                            <button onClick={() => { setNewSale({...newSale, customerId: ''}); setCustomerSearch(''); }} className="text-slate-400 hover:text-red-500 p-1.5 transition-colors"><X size={14}/></button>
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <h4 className="font-bold text-slate-900 dark:text-white text-[11px] truncate uppercase">{selectedCustomer.name}</h4>
-                          <p className="text-[8px] font-black uppercase text-indigo-500">{selectedCustomer.tier} Partner</p>
-                        </div>
-                        <button onClick={() => { setNewSale({...newSale, customerId: ''}); setCustomerSearch(''); }} className="text-slate-400 hover:text-red-500 p-1.5 transition-colors"><X size={14}/></button>
                      </div>
                    ) : (
                      <div className="p-2.5 bg-slate-100/50 dark:bg-slate-800/50 border border-dashed border-slate-300 dark:border-slate-700 rounded-xl flex items-center justify-between opacity-80">
@@ -688,14 +843,15 @@ export const Sales: React.FC<SalesProps> = ({
                      </div>
                    </div>
                    <div className="flex justify-between items-center">
-                     <span className="text-[9px] font-black uppercase text-slate-400">Order Status</span>
+                     <span className="text-[9px] font-black uppercase text-slate-400">Initial Status</span>
                      <select 
                        className="bg-transparent border-none text-[10px] font-black uppercase text-indigo-600 outline-none cursor-pointer"
                        value={newSale.status}
                        onChange={e => setNewSale({...newSale, status: e.target.value as any})}
                      >
-                       <option value="Completed">Completed</option>
+                       <option value="Confirmed">Confirmed</option>
                        <option value="Pending">Pending</option>
+                       <option value="Delivered">Delivered</option>
                      </select>
                    </div>
                 </div>
@@ -717,39 +873,12 @@ export const Sales: React.FC<SalesProps> = ({
                   disabled={!newSale.customerId || !newSale.items?.length}
                   className="w-full mt-2 py-4 bg-slate-900 dark:bg-indigo-600 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-xl transition-all hover:scale-[1.01] active:scale-95 disabled:opacity-30 flex items-center justify-center gap-2"
                 >
-                  {selectedCustomer ? 'Confirm Order' : 'Assign Client'} 
+                  {editingSaleId ? 'Update Order Record' : (selectedCustomer ? 'Confirm Order' : 'Assign Client')} 
                   <ArrowRight size={14} />
                 </button>
               </div>
             </div>
           </div>
-        </div>
-      )}
-
-      {/* QUICK ADD CUSTOMER */}
-      {isQuickAddOpen && (
-        <div className="fixed inset-0 z-[150] bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
-           <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-2xl w-full max-w-md p-10 space-y-8 animate-in zoom-in-95 duration-200 border border-white/5">
-              <div className="flex justify-between items-center">
-                <h4 className="text-2xl font-serif font-bold text-slate-900 dark:text-white">Register Client</h4>
-                <button onClick={() => setIsQuickAddOpen(false)} className="text-slate-400 hover:text-red-500 bg-slate-100 dark:bg-slate-800 p-2 rounded-full"><X size={20}/></button>
-              </div>
-              <form onSubmit={handleQuickAddCustomer} className="space-y-6">
-                 <div className="space-y-1.5">
-                   <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Client Name</label>
-                   <input required className="w-full p-4 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl outline-none focus:border-indigo-500/30 dark:text-white font-bold text-sm" value={quickCustomer.name} onChange={e => setQuickCustomer({...quickCustomer, name: e.target.value})} placeholder="Full Name" />
-                 </div>
-                 <div className="space-y-1.5">
-                   <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Phone Number</label>
-                   <input required className="w-full p-4 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl outline-none focus:border-indigo-500/30 dark:text-white font-bold text-sm" value={quickCustomer.phone} onChange={e => setQuickCustomer({...quickCustomer, phone: e.target.value})} placeholder="+880..." />
-                 </div>
-                 <div className="space-y-1.5">
-                   <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Delivery Address</label>
-                   <textarea required className="w-full p-4 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl outline-none focus:border-indigo-500/30 dark:text-white font-bold text-sm h-24 resize-none" value={quickCustomer.address} onChange={e => setQuickCustomer({...quickCustomer, address: e.target.value})} placeholder="House / Road / Area..." />
-                 </div>
-                 <button type="submit" className="w-full py-4 bg-indigo-600 text-white rounded-xl font-black uppercase tracking-widest text-[10px] shadow-lg active:scale-95 transition-all">Enroll Account</button>
-              </form>
-           </div>
         </div>
       )}
 
@@ -763,70 +892,100 @@ export const Sales: React.FC<SalesProps> = ({
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-500 mt-1">Ref: #{selectedOrder.id.slice(-8)}</p>
                </div>
                <div className="flex gap-2">
+                 <button onClick={() => handleEditOrder(selectedOrder)} className="p-3 text-white bg-indigo-600 hover:bg-indigo-700 rounded-full shadow-lg transition-all active:scale-95" title="Edit Order">
+                   <Edit size={20} />
+                 </button>
                  <button onClick={() => handlePrintInvoice(selectedOrder)} className="p-3 text-slate-500 hover:text-indigo-600 bg-white dark:bg-slate-800 rounded-full shadow-sm transition-colors border border-slate-100 dark:border-slate-700 hover:border-indigo-200" title="Print Invoice">
                    <Printer size={20} />
                  </button>
                  <button onClick={() => setSelectedOrder(null)} className="p-3 text-slate-400 hover:text-slate-600 bg-white dark:bg-slate-800 rounded-full shadow-sm"><X size={24}/></button>
                </div>
              </div>
+             
              <div className="p-10 space-y-8 overflow-y-auto max-h-[70vh] custom-scrollbar">
-                <div className="grid grid-cols-2 gap-8">
-                   <div>
-                      <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2">Customer</p>
-                      <h4 className="text-lg font-bold text-slate-800 dark:text-white">{selectedOrder.customerName}</h4>
-                      <p className="text-xs text-slate-500 mt-1">{formatDate(selectedOrder.date)}</p>
-                   </div>
-                   <div className="text-right">
-                      <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2">Status</p>
-                      <div className="flex justify-end gap-2">
-                        {['Completed', 'Pending', 'Cancelled'].map(status => (
-                            <button
-                                key={status}
-                                onClick={() => handleUpdateStatus(status as any)}
-                                disabled={selectedOrder.status === status}
-                                className={`px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border flex items-center gap-1.5 transition-all ${
-                                    selectedOrder.status === status 
-                                    ? getStatusStyle(status) 
-                                    : 'bg-white dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700 hover:border-indigo-300'
-                                }`}
-                            >
-                                {status === selectedOrder.status && getStatusIcon(status)}
-                                {status}
-                            </button>
-                        ))}
-                      </div>
-                   </div>
-                </div>
-
-                {/* Delivery Address Section in Order Details */}
+                
+                {/* Customer Profile Card */}
                 {(() => {
                   const customer = getOrderCustomer(selectedOrder.id, selectedOrder.customerId);
-                  return customer && (
-                    <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-700 flex items-start gap-4">
-                       <MapPin size={20} className="text-indigo-500 shrink-0 mt-0.5" />
-                       <div>
-                          <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Delivery Destination</p>
-                          <p className="text-sm font-medium text-slate-700 dark:text-slate-300 leading-relaxed">{customer.address}</p>
-                          <p className="text-xs text-slate-500 mt-1">{customer.phone}</p>
+                  return customer ? (
+                    <div className="bg-indigo-50 dark:bg-indigo-500/5 rounded-2xl p-6 border border-indigo-100 dark:border-indigo-500/10">
+                       <div className="flex items-start justify-between mb-4">
+                          <h4 className="text-sm font-bold text-indigo-900 dark:text-indigo-100 uppercase tracking-wide flex items-center gap-2">
+                             <User size={14}/> Client Profile
+                          </h4>
+                          <span className="px-3 py-1 bg-white dark:bg-indigo-900/50 rounded-full text-[9px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-500/20">
+                             {customer.tier} Member
+                          </span>
                        </div>
+                       <div className="grid grid-cols-2 gap-4 text-sm">
+                          <div>
+                             <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Name</p>
+                             <p className="font-bold text-slate-800 dark:text-white">{customer.name}</p>
+                          </div>
+                          <div>
+                             <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Phone</p>
+                             <p className="font-mono text-slate-700 dark:text-slate-300">{customer.phone}</p>
+                          </div>
+                          <div className="col-span-2">
+                             <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Billing / Delivery Address</p>
+                             <p className="font-medium text-slate-700 dark:text-slate-300 leading-relaxed">{customer.address}</p>
+                          </div>
+                          <div className="col-span-2 border-t border-indigo-100 dark:border-indigo-500/20 pt-3 mt-1 flex justify-between items-center">
+                             <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400">
+                                <Wallet size={14} />
+                                <span className="text-[10px] font-black uppercase tracking-widest">Lifetime Value</span>
+                             </div>
+                             <p className="font-mono font-bold text-lg text-slate-900 dark:text-white">৳{customer.totalSpent.toLocaleString()}</p>
+                          </div>
+                       </div>
+                    </div>
+                  ) : (
+                    <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl text-center text-slate-400 text-sm italic">
+                       Customer profile not found in database.
                     </div>
                   );
                 })()}
 
+                <div className="flex flex-col gap-4">
+                    <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 pb-2">
+                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Order Status</p>
+                    <div className="flex justify-end gap-2 flex-wrap max-w-md">
+                            {['Pending', 'Confirmed', 'Delivered', 'Returned', 'Cancelled'].map(status => (
+                                <button
+                                    key={status}
+                                    onClick={() => handleStatusChange(selectedOrder, status as any)}
+                                    disabled={selectedOrder.status === status}
+                                    className={`px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border flex items-center gap-1.5 transition-all ${
+                                        selectedOrder.status === status 
+                                        ? getStatusStyle(status) 
+                                        : 'bg-white dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700 hover:border-indigo-300'
+                                    } ${selectedOrder.status === status ? 'opacity-100 ring-2 ring-offset-1 ring-indigo-500/20' : 'opacity-70 hover:opacity-100'}`}
+                                >
+                                    {status === selectedOrder.status && getStatusIcon(status)}
+                                    {status}
+                                </button>
+                            ))}
+                    </div>
+                    </div>
+                </div>
+
                 <div className="space-y-4">
-                  <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest border-b border-slate-100 dark:border-slate-800 pb-2">Line Items</p>
+                  <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Line Items</p>
                   {selectedOrder.items.map((item, idx) => (
                     <div key={idx} className="flex justify-between items-center py-3 border-b border-slate-50 dark:border-slate-800 last:border-0">
                        <div className="flex items-center gap-4">
-                          <div className="w-8 h-8 bg-slate-100 dark:bg-slate-800 rounded-lg flex items-center justify-center font-bold text-xs text-slate-500">
+                          <div className="w-10 h-10 bg-slate-100 dark:bg-slate-800 rounded-xl flex items-center justify-center font-bold text-xs text-slate-500">
                              {item.quantity}x
                           </div>
                           <div>
                              <p className="font-bold text-slate-800 dark:text-white text-sm">{item.productName}</p>
-                             {item.variantName && <p className="text-[10px] text-indigo-500 font-bold uppercase">{item.variantName}</p>}
+                             {item.variantName && <p className="text-[10px] text-indigo-500 font-bold uppercase tracking-wide">{item.variantName}</p>}
                           </div>
                        </div>
-                       <p className="font-mono font-bold text-slate-900 dark:text-white">৳{item.total.toLocaleString()}</p>
+                       <div className="text-right">
+                          <p className="font-mono font-bold text-slate-900 dark:text-white">৳{item.total.toLocaleString()}</p>
+                          <p className="text-[10px] text-slate-400">@ ৳{item.unitPrice.toLocaleString()}</p>
+                       </div>
                     </div>
                   ))}
                 </div>
@@ -879,112 +1038,6 @@ export const Sales: React.FC<SalesProps> = ({
           </div>
         </div>
       )}
-    </div>
-  );
-};
-
-const PosProductCard: React.FC<{ 
-  product: Product; 
-  onAdd: (product: Product, variant?: ProductVariant, qty?: number) => void;
-  cartItems: SaleItem[];
-}> = ({ product, onAdd, cartItems }) => {
-  const [selectedVariantId, setSelectedVariantId] = useState<string>('');
-  
-  const selectedVariant = product.variants?.find(v => v.id === selectedVariantId);
-  const currentPrice = selectedVariant ? selectedVariant.sellingPrice : product.sellingPrice;
-  const currentStock = selectedVariant ? selectedVariant.stockLevel : product.stockLevel;
-  
-  const inCartQty = cartItems.filter(i => i.productId === product.id).reduce((sum, i) => sum + i.quantity, 0);
-  const itemInCart = cartItems.find(i => i.productId === product.id && (selectedVariant ? i.variantId === selectedVariant.id : !i.variantId));
-  const specificInCartQty = itemInCart?.quantity || 0;
-
-  const availableAfterCart = currentStock - specificInCartQty;
-
-  return (
-    <div className={`relative bg-white dark:bg-slate-800 rounded-2xl overflow-hidden border-2 transition-all group flex flex-col h-full ${
-      inCartQty > 0 
-        ? 'border-indigo-600 shadow-xl shadow-indigo-500/5 bg-indigo-50/5' 
-        : 'border-slate-100 dark:border-slate-800 hover:border-indigo-400'
-    }`}>
-      
-      {/* Thumbnail */}
-      <div className="aspect-[4/3] relative bg-slate-50 dark:bg-slate-950 flex items-center justify-center overflow-hidden shrink-0 border-b border-slate-100 dark:border-slate-800/50">
-        {product.image ? (
-          <img src={product.image} className="w-full h-full object-cover transition-transform group-hover:scale-110" alt={product.name} />
-        ) : (
-          <Package className="text-slate-200 dark:text-slate-800 opacity-20" size={48} />
-        )}
-        
-        <div className="absolute top-3 left-3 z-10">
-           <span className="px-2 py-0.5 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-lg text-[7px] font-black uppercase text-indigo-600 shadow-sm border border-indigo-100/10">{product.category}</span>
-        </div>
-
-        {/* Units Indicator */}
-        {inCartQty > 0 && (
-          <div className="absolute inset-0 bg-indigo-600/5 flex items-center justify-center pointer-events-none">
-             <div className="bg-indigo-600 text-white w-10 h-10 rounded-full flex flex-col items-center justify-center shadow-xl border border-white/40 ring-2 ring-indigo-500/20 animate-in zoom-in-50">
-                <span className="text-sm font-black leading-none">{inCartQty}</span>
-             </div>
-          </div>
-        )}
-      </div>
-
-      {/* Info Body */}
-      <div className="p-5 flex flex-col flex-1">
-        <div className="mb-3 space-y-1">
-           <div className="flex justify-between items-start gap-3">
-             <h4 className="font-bold text-slate-900 dark:text-white text-[11px] leading-tight uppercase tracking-tight line-clamp-2 flex-1 min-h-[2.2rem]">{product.name}</h4>
-             <span className="font-mono font-black text-indigo-600 dark:text-white text-xs bg-indigo-50 dark:bg-indigo-500/20 px-2 py-0.5 rounded-lg border border-indigo-100 dark:border-indigo-500/10 whitespace-nowrap">৳{currentPrice.toLocaleString()}</span>
-           </div>
-           <p className="text-[8px] font-mono font-bold text-slate-400 uppercase flex items-center gap-1 mt-1">
-             <Hash size={8} className="text-indigo-400/50" /> {product.sku}
-           </p>
-        </div>
-
-        {/* Variants Selection */}
-        {product.hasVariants && (
-          <div className="mb-4 space-y-1.5">
-            <p className="text-[7px] font-black uppercase text-slate-400 tracking-widest">Options</p>
-            <div className="flex flex-wrap gap-1">
-              {product.variants?.map(v => (
-                <button 
-                  key={v.id} 
-                  onClick={() => setSelectedVariantId(v.id)}
-                  disabled={v.stockLevel <= 0}
-                  className={`px-2.5 py-1 rounded-lg text-[7px] font-black uppercase transition-all border ${
-                    selectedVariantId === v.id 
-                      ? 'bg-indigo-600 border-indigo-600 text-white scale-105' 
-                      : 'bg-slate-50 dark:bg-slate-900 border-slate-100 dark:border-slate-800 text-slate-500 hover:border-indigo-400'
-                  } ${v.stockLevel <= 0 ? 'opacity-30 cursor-not-allowed grayscale pointer-events-none' : ''}`}
-                >
-                  {v.name}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Footer Actions */}
-        <div className="mt-auto pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
-           <div className="flex flex-col">
-              <div className="flex items-center gap-1 mb-0.5">
-                <div className={`w-1.5 h-1.5 rounded-full ${availableAfterCart > 0 ? (availableAfterCart < 5 ? 'bg-amber-500' : 'bg-green-500') : 'bg-red-500'}`} />
-                <span className={`text-[9px] font-black uppercase ${availableAfterCart > 0 ? (availableAfterCart < 5 ? 'text-amber-600' : 'text-green-600') : 'text-red-600'}`}>
-                   {availableAfterCart > 0 ? (availableAfterCart < 5 ? 'Low Stock' : 'In Stock') : 'Sold Out'}
-                </span>
-              </div>
-              <p className="text-[9px] text-slate-400">{currentStock} Units</p>
-           </div>
-           
-           <button 
-             onClick={() => onAdd(product, selectedVariant, 1)}
-             disabled={currentStock <= 0}
-             className="px-4 py-2 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-indigo-600 dark:hover:bg-indigo-400 dark:hover:text-white transition-all shadow-md active:scale-95 disabled:opacity-20 disabled:scale-100 disabled:bg-slate-300"
-           >
-             Add +
-           </button>
-        </div>
-      </div>
     </div>
   );
 };

@@ -54,7 +54,41 @@ const EditableCell = ({ value, onSave, type = 'text', prefix = '' }: { value: st
       onClick={() => setIsEditing(true)} 
       className="px-4 py-3 border-r border-slate-200 dark:border-slate-700 text-xs text-slate-600 dark:text-slate-300 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 group transition-colors text-right relative"
     >
-      {prefix}{Number(value).toLocaleString()}
+      {prefix}{typeof value === 'number' ? value.toLocaleString() : value}
+      <Edit2 size={10} className="absolute right-1 top-1 text-indigo-400 opacity-0 group-hover:opacity-100" />
+    </td>
+  );
+};
+
+// New Select Cell Component
+const EditableSelectCell = ({ value, options, onSave }: { value: string, options: {id: string, label: string}[], onSave: (val: string) => void }) => {
+  const [isEditing, setIsEditing] = useState(false);
+
+  if (isEditing) {
+    return (
+      <td className="px-0 py-0 border-r border-slate-200 dark:border-slate-700 w-32">
+        <select 
+          autoFocus
+          className="w-full h-full px-2 py-3 bg-indigo-50 dark:bg-indigo-900/20 text-xs font-bold text-indigo-600 dark:text-indigo-400 outline-none appearance-none"
+          value={value}
+          onChange={(e) => { onSave(e.target.value); setIsEditing(false); }}
+          onBlur={() => setIsEditing(false)}
+        >
+          <option value="">-- None --</option>
+          {options.map(opt => <option key={opt.id} value={opt.id}>{opt.label}</option>)}
+        </select>
+      </td>
+    );
+  }
+
+  const label = options.find(o => o.id === value)?.label || 'N/A';
+
+  return (
+    <td 
+      onClick={() => setIsEditing(true)} 
+      className="px-4 py-3 border-r border-slate-200 dark:border-slate-700 text-xs text-slate-600 dark:text-slate-300 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 group transition-colors relative"
+    >
+      {label}
       <Edit2 size={10} className="absolute right-1 top-1 text-indigo-400 opacity-0 group-hover:opacity-100" />
     </td>
   );
@@ -72,13 +106,13 @@ export const SpreadsheetView: React.FC<SpreadsheetViewProps> = ({
     let filename = `${activeTab}_sheet_${new Date().toISOString().slice(0, 10)}.csv`;
 
     if (activeTab === 'inventory') {
-      headers = ["ID", "SKU", "Name", "Category", "Supplier", "Stock", "Cost (BDT)", "Price (BDT)", "Total Asset Value"];
+      headers = ["ID", "SKU", "Name", "Category", "Supplier", "Stock", "Min Stock", "Cost (BDT)", "Price (BDT)", "Total Asset Value"];
       rows = products.map(p => {
         const stock = p.hasVariants ? p.variants?.reduce((a,b) => a + b.stockLevel, 0) : p.stockLevel;
         return [
           p.id, p.sku, p.name, p.category, 
           suppliers.find(s => s.id === p.supplierId)?.name || 'N/A',
-          stock, p.costPrice, p.sellingPrice, (stock || 0) * p.costPrice
+          stock, p.minStockLevel || 5, p.costPrice, p.sellingPrice, (stock || 0) * p.costPrice
         ];
       });
     } else if (activeTab === 'sales') {
@@ -110,34 +144,75 @@ export const SpreadsheetView: React.FC<SpreadsheetViewProps> = ({
     document.body.removeChild(link);
   };
 
+  const getStatusBadge = (status: string) => {
+    switch(status) {
+      case 'Confirmed': return 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/20';
+      case 'Delivered': return 'bg-green-100 text-green-700 border-green-200 dark:bg-green-500/10 dark:text-green-400 dark:border-green-500/20';
+      case 'Pending': return 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20';
+      case 'Returned': return 'bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-500/10 dark:text-purple-400 dark:border-purple-500/20';
+      case 'Cancelled': return 'bg-red-100 text-red-700 border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20';
+      default: return 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700';
+    }
+  };
+
   const renderTable = () => {
     let headers: string[] = [];
     let rows: React.ReactNode[] = [];
 
     if (activeTab === 'inventory') {
-      headers = ["SKU", "Product Name", "Category", "Stock (Edit)", "Cost (৳)", "Price (Edit ৳)", "Asset Value (৳)"];
+      headers = ["SKU", "Product Name", "Category (Edit)", "Supplier (Edit)", "Stock (Edit)", "Min Stock (Edit)", "Cost (Edit ৳)", "Price (Edit ৳)", "Asset Value (৳)"];
       const filtered = products.filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()) || p.sku.toLowerCase().includes(searchTerm.toLowerCase()));
+      
+      const supplierOptions = suppliers.map(s => ({ id: s.id, label: s.name }));
+
       rows = filtered.map(p => {
         const stock = p.hasVariants ? p.variants?.reduce((a,b) => a + b.stockLevel, 0) : p.stockLevel;
         return (
           <tr key={p.id} className="hover:bg-indigo-50/30 dark:hover:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700 transition-colors">
             <Cell className="font-mono">{p.sku}</Cell>
             <Cell className="font-bold">{p.name}</Cell>
-            <Cell>{p.category}</Cell>
+            <EditableCell 
+                 value={p.category} 
+                 type="text" 
+                 onSave={(val) => onUpdateProduct({...p, category: val})} 
+            />
+            
+            <EditableSelectCell 
+                value={p.supplierId || ''} 
+                options={supplierOptions}
+                onSave={(val) => onUpdateProduct({...p, supplierId: val})}
+            />
             
             {p.hasVariants ? (
-               <Cell align="center">
-                 <span className="bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-[10px] font-bold text-slate-500">VARIANTS</span>
-               </Cell>
+               <>
+                 <Cell align="center">
+                   <span className="bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-[10px] font-bold text-slate-500">VARIANTS</span>
+                 </Cell>
+                 <Cell align="center">
+                   <span className="text-slate-400 text-[10px]">-</span>
+                 </Cell>
+               </>
             ) : (
-               <EditableCell 
-                 value={p.stockLevel} 
-                 type="number" 
-                 onSave={(val) => onUpdateProduct({...p, stockLevel: val})} 
-               />
+               <>
+                 <EditableCell 
+                   value={p.stockLevel} 
+                   type="number" 
+                   onSave={(val) => onUpdateProduct({...p, stockLevel: val})} 
+                 />
+                 <EditableCell 
+                   value={p.minStockLevel || 5} 
+                   type="number" 
+                   onSave={(val) => onUpdateProduct({...p, minStockLevel: val})} 
+                 />
+               </>
             )}
 
-            <Cell align="right">{p.costPrice.toLocaleString()}</Cell>
+            <EditableCell 
+              value={p.costPrice} 
+              type="number" 
+              prefix="৳"
+              onSave={(val) => onUpdateProduct({...p, costPrice: val})} 
+            />
             
             <EditableCell 
               value={p.sellingPrice} 
@@ -160,7 +235,7 @@ export const SpreadsheetView: React.FC<SpreadsheetViewProps> = ({
           <Cell>{s.customerName}</Cell>
           <Cell>{s.items.length} items</Cell>
           <Cell align="right">{s.totalAmount.toLocaleString()}</Cell>
-          <Cell><span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold ${s.status === 'Completed' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>{s.status}</span></Cell>
+          <Cell><span className={`px-3 py-1 rounded-full text-[9px] uppercase font-black tracking-widest border ${getStatusBadge(s.status)}`}>{s.status}</span></Cell>
         </tr>
       ));
     } else if (activeTab === 'customers') {
