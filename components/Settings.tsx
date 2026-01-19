@@ -19,7 +19,8 @@ import {
   Smartphone,
   Monitor,
   Upload,
-  Receipt
+  Receipt,
+  FileText
 } from 'lucide-react';
 
 interface SettingsProps {
@@ -30,8 +31,8 @@ interface SettingsProps {
   expenses: Expense[];
   returns: Return[];
   onFactoryReset: () => void;
-  businessProfile: { name: string; address: string; phone: string; email: string };
-  onUpdateProfile: (p: { name: string; address: string; phone: string; email: string }) => void;
+  businessProfile: { name: string; address: string; phone: string; email: string; footerMessage?: string; terms?: string };
+  onUpdateProfile: (p: any) => void;
   onUpdatePin: (pin: string) => void;
 }
 
@@ -143,7 +144,7 @@ export const Settings: React.FC<SettingsProps> = ({
           <h2 className="text-4xl font-serif font-bold text-slate-900 dark:text-white tracking-tight">System Settings</h2>
           <p className="text-slate-500 dark:text-slate-400 text-sm">Configuration, Branding, and Security.</p>
         </div>
-        <div className="flex items-center gap-3 bg-indigo-900 text-white px-5 py-2 rounded-full border border-indigo-500/30 shadow-lg">
+        <div className="flex items-center gap-3 bg-indigo-950 text-white px-5 py-2 rounded-full border border-indigo-500/30 shadow-lg">
           <ShieldCheck size={16} className="text-indigo-400" />
           <span className="text-[10px] font-black uppercase tracking-widest">Enterprise Protocol Active</span>
         </div>
@@ -243,7 +244,7 @@ export const Settings: React.FC<SettingsProps> = ({
               </div>
               <div>
                  <h3 className="text-xl font-serif font-bold text-slate-900 dark:text-white">Business Profile</h3>
-                 <p className="text-slate-500 dark:text-slate-400 text-xs">Used for Invoice headers and branding.</p>
+                 <p className="text-slate-500 dark:text-slate-400 text-xs">Identity and Invoice Configuration.</p>
               </div>
            </div>
            
@@ -266,11 +267,21 @@ export const Settings: React.FC<SettingsProps> = ({
                  <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1.5 ml-1">Address</label>
                  <input className="w-full p-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white font-bold text-sm transition-all" value={profileForm.address} onChange={e => setProfileForm({...profileForm, address: e.target.value})} />
               </div>
+              <div className="grid grid-cols-2 gap-4">
+                 <div>
+                    <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1.5 ml-1">Invoice Footer</label>
+                    <input className="w-full p-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white font-bold text-sm transition-all" value={profileForm.footerMessage || ''} onChange={e => setProfileForm({...profileForm, footerMessage: e.target.value})} placeholder="Thank you message" />
+                 </div>
+                 <div>
+                    <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1.5 ml-1">T&C Summary</label>
+                    <input className="w-full p-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white font-bold text-sm transition-all" value={profileForm.terms || ''} onChange={e => setProfileForm({...profileForm, terms: e.target.value})} placeholder="Return policy short text" />
+                 </div>
+              </div>
               <button 
                 onClick={() => onUpdateProfile(profileForm)} 
                 className="w-full py-4 bg-slate-900 dark:bg-indigo-600 text-white rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-slate-800 dark:hover:bg-indigo-500 transition-colors shadow-lg active:scale-95"
               >
-                 <Save size={16} /> Save Profile Settings
+                 <Save size={16} /> Save Business Settings
               </button>
            </div>
         </div>

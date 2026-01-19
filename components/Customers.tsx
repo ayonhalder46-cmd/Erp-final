@@ -1,7 +1,7 @@
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Customer, Sale } from '../types';
-import { Mail, Phone, User, Calendar, Plus, X, Edit2, Trash2, Award, Undo2, Redo2, MapPin, History, ChevronRight } from 'lucide-react';
+import { Mail, Phone, User, Calendar, Plus, X, Edit2, Trash2, Award, Undo2, Redo2, MapPin, History, ChevronRight, BarChart } from 'lucide-react';
 
 interface CustomersProps {
   customers: Customer[];
@@ -27,6 +27,14 @@ export const Customers: React.FC<CustomersProps> = ({
   const [formData, setFormData] = useState<Partial<Customer>>({
     name: '', address: '', phone: '', tier: 'Bronze', totalSpent: 0, lastPurchaseDate: 'N/A'
   });
+
+  const tierCounts = useMemo(() => {
+    const counts = { Gold: 0, Silver: 0, Bronze: 0 };
+    customers.forEach(c => {
+        if (counts[c.tier] !== undefined) counts[c.tier]++;
+    });
+    return counts;
+  }, [customers]);
 
   const handleOpenModal = (customer?: Customer) => {
     if (customer) {
@@ -97,6 +105,37 @@ export const Customers: React.FC<CustomersProps> = ({
             <Plus size={18} /> Add New Client
           </button>
         </div>
+      </div>
+
+      {/* Tier Breakdown */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+         <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/30 p-6 rounded-[2rem] flex items-center gap-4">
+            <div className="p-3 bg-white dark:bg-amber-900/30 rounded-xl text-amber-500">
+               <Award size={24} />
+            </div>
+            <div>
+               <p className="text-[10px] font-black uppercase tracking-widest text-amber-700 dark:text-amber-400">Gold Tier</p>
+               <p className="text-2xl font-serif font-bold text-slate-900 dark:text-white">{tierCounts.Gold}</p>
+            </div>
+         </div>
+         <div className="bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 p-6 rounded-[2rem] flex items-center gap-4">
+            <div className="p-3 bg-white dark:bg-slate-800 rounded-xl text-slate-500">
+               <Award size={24} />
+            </div>
+            <div>
+               <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Silver Tier</p>
+               <p className="text-2xl font-serif font-bold text-slate-900 dark:text-white">{tierCounts.Silver}</p>
+            </div>
+         </div>
+         <div className="bg-orange-50 dark:bg-orange-900/10 border border-orange-100 dark:border-orange-900/30 p-6 rounded-[2rem] flex items-center gap-4">
+            <div className="p-3 bg-white dark:bg-orange-900/30 rounded-xl text-orange-500">
+               <Award size={24} />
+            </div>
+            <div>
+               <p className="text-[10px] font-black uppercase tracking-widest text-orange-700 dark:text-orange-400">Bronze Tier</p>
+               <p className="text-2xl font-serif font-bold text-slate-900 dark:text-white">{tierCounts.Bronze}</p>
+            </div>
+         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">

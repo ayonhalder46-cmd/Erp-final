@@ -1,7 +1,7 @@
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Product, ProductVariant, Supplier } from '../types';
-import { Plus, Edit2, Trash2, Search, X, Undo2, Redo2, Layers, Package, ImageIcon, Upload, Image as ImageIconLucide, ChevronLeft, ChevronRight, Filter, ChevronDown, AlertCircle, AlertTriangle } from 'lucide-react';
+import { Plus, Edit2, Trash2, Search, X, Undo2, Redo2, Layers, Package, ImageIcon, Upload, Image as ImageIconLucide, ChevronLeft, ChevronRight, Filter, ChevronDown, AlertCircle, AlertTriangle, BadgeDollarSign, BarChart2 } from 'lucide-react';
 
 interface InventoryProps {
   products: Product[];
@@ -13,6 +13,7 @@ interface InventoryProps {
   canRedo: boolean;
   onUndo: () => void;
   onRedo: () => void;
+  notify?: (msg: string, type: 'success' | 'error' | 'info') => void;
 }
 
 const CATEGORIES = [
@@ -28,7 +29,7 @@ const CATEGORIES = [
 
 export const Inventory: React.FC<InventoryProps> = ({ 
   products, suppliers, onAddProduct, onUpdateProduct, onDeleteProduct,
-  canUndo, canRedo, onUndo, onRedo 
+  canUndo, canRedo, onUndo, onRedo, notify
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
@@ -47,6 +48,29 @@ export const Inventory: React.FC<InventoryProps> = ({
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  // Stats Logic
+  const stats = useMemo(() => {
+    let totalValue = 0;
+    let totalItems = 0;
+    let lowStock = 0;
+    
+    products.forEach(p => {
+        const stock = p.hasVariants ? p.variants?.reduce((a,b) => a + b.stockLevel, 0) : p.stockLevel;
+        const min = p.minStockLevel || 5;
+        
+        totalValue += (stock || 0) * p.costPrice;
+        totalItems += (stock || 0);
+        
+        const isLow = p.hasVariants 
+            ? p.variants?.some(v => v.stockLevel < (v.minStockLevel || 5)) 
+            : (p.stockLevel || 0) < min;
+            
+        if (isLow) lowStock++;
+    });
+    
+    return { totalValue, totalItems, lowStock };
+  }, [products]);
 
   const [formData, setFormData] = useState<Partial<Product>>({
     sku: '', name: '', category: 'Furniture', costPrice: 0, sellingPrice: 0, stockLevel: 0, minStockLevel: 5, hasVariants: false, variants: [], image: '', supplierId: ''
@@ -85,6 +109,12 @@ export const Inventory: React.FC<InventoryProps> = ({
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      if (file.size > 500 * 1024) {
+        if (notify) notify('Image file too large. Max 500KB allowed.', 'error');
+        else alert('Image file too large. Max 500KB allowed.');
+        return;
+      }
+      
       const reader = new FileReader();
       reader.onloadend = () => {
         setFormData({ ...formData, image: reader.result as string });
@@ -124,6 +154,7 @@ export const Inventory: React.FC<InventoryProps> = ({
       const existingProduct = products.find(p => p.sku === formData.sku && p.id !== editingId);
       if (existingProduct) {
         setErrorMsg(`SKU "${formData.sku}" is already in use by "${existingProduct.name}".`);
+        if (notify) notify(`SKU collision detected`, 'error');
         return;
       }
     }
@@ -139,20 +170,49 @@ export const Inventory: React.FC<InventoryProps> = ({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h2 className="text-3xl font-serif font-bold text-slate-900 dark:text-white tracking-tight">Inventory Catalog</h2>
-          <p className="text-slate-600 dark:text-slate-400 text-sm font-medium">Active management of {products.length} stock items.</p>
-        </div>
-        <div className="flex items-center gap-3 w-full sm:w-auto">
-          <div className="flex bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-1.5 shadow-sm">
-            <button onClick={onUndo} disabled={!canUndo} className="p-2 text-slate-400 hover:text-indigo-600 disabled:opacity-20 transition-all"><Undo2 size={18}/></button>
-            <div className="w-[1px] bg-slate-100 dark:bg-slate-800 mx-1.5" />
-            <button onClick={onRedo} disabled={!canRedo} className="p-2 text-slate-400 hover:text-indigo-600 disabled:opacity-20 transition-all"><Redo2 size={18}/></button>
-          </div>
-          <button onClick={() => handleOpenModal()} className="flex-1 sm:flex-none bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-4 rounded-2xl flex items-center justify-center gap-2 transition-all shadow-xl shadow-indigo-500/20 font-bold active:scale-95">
+      {/* Header and Stats */}
+      <div className="flex flex-col gap-6">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div>
+            <h2 className="text-3xl font-serif font-bold text-slate-900 dark:text-white tracking-tight">Inventory Catalog</h2>
+            <p className="text-slate-600 dark:text-slate-400 text-sm font-medium">Active management of {products.length} stock items.</p>
+            </div>
+            <button onClick={() => handleOpenModal()} className="flex-1 sm:flex-none bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-4 rounded-2xl flex items-center justify-center gap-2 transition-all shadow-xl shadow-indigo-500/20 font-bold active:scale-95">
             <Plus size={18} /> New Product
-          </button>
+            </button>
+        </div>
+
+        {/* Stats Bar */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-[2rem] shadow-sm flex items-center gap-4">
+                <div className="p-3 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-xl">
+                    <BadgeDollarSign size={24} />
+                </div>
+                <div>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Total Asset Value</p>
+                    <p className="text-2xl font-serif font-bold text-slate-900 dark:text-white">৳{stats.totalValue.toLocaleString()}</p>
+                </div>
+            </div>
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-[2rem] shadow-sm flex items-center gap-4">
+                <div className="p-3 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-xl">
+                    <Package size={24} />
+                </div>
+                <div>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Items in Stock</p>
+                    <p className="text-2xl font-serif font-bold text-slate-900 dark:text-white">{stats.totalItems.toLocaleString()}</p>
+                </div>
+            </div>
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-[2rem] shadow-sm flex items-center gap-4">
+                <div className={`p-3 rounded-xl ${stats.lowStock > 0 ? 'bg-red-50 text-red-500 dark:bg-red-500/10' : 'bg-green-50 text-green-500 dark:bg-green-500/10'}`}>
+                    <AlertTriangle size={24} />
+                </div>
+                <div>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Stock Alerts</p>
+                    <p className={`text-2xl font-serif font-bold ${stats.lowStock > 0 ? 'text-red-500' : 'text-slate-900 dark:text-white'}`}>
+                        {stats.lowStock > 0 ? `${stats.lowStock} Low Stock` : 'Optimal'}
+                    </p>
+                </div>
+            </div>
         </div>
       </div>
 
@@ -202,7 +262,6 @@ export const Inventory: React.FC<InventoryProps> = ({
                 const totalStock = product.hasVariants ? product.variants?.reduce((a, b) => a + b.stockLevel, 0) : product.stockLevel;
                 const supplier = suppliers.find(s => s.id === product.supplierId);
                 
-                // Determine low stock status
                 const isLowStock = product.hasVariants 
                   ? product.variants?.some(v => v.stockLevel <= (v.minStockLevel || 5))
                   : product.stockLevel <= (product.minStockLevel || 5);
@@ -443,7 +502,7 @@ export const Inventory: React.FC<InventoryProps> = ({
                           <Upload size={32} />
                         </div>
                         <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Click to Upload</p>
-                        <p className="text-[9px] text-slate-500 dark:text-slate-400 uppercase mt-2 opacity-70">PNG, JPG up to 2MB</p>
+                        <p className="text-[9px] text-slate-500 dark:text-slate-400 uppercase mt-2 opacity-70">Max 500KB</p>
                       </>
                     )}
                     <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />

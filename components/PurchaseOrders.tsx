@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { PurchaseOrder, Product, Supplier, PurchaseOrderItem, ProductVariant } from '../types';
-import { Plus, X, Search, Package, Container, Truck, CheckCircle2, AlertTriangle, Calendar, ArrowRight, Sparkles, RefreshCw } from 'lucide-react';
+import { Plus, X, Search, Package, Container, Truck, CheckCircle2, AlertTriangle, Calendar, ArrowRight, Sparkles, RefreshCw, Printer } from 'lucide-react';
 
 interface PurchaseOrdersProps {
   purchaseOrders: PurchaseOrder[];
@@ -9,9 +9,10 @@ interface PurchaseOrdersProps {
   suppliers: Supplier[];
   onCreatePO: (po: PurchaseOrder) => void;
   onReceivePO: (po: PurchaseOrder) => void;
+  companyProfile?: { name: string; address: string; phone: string; email: string };
 }
 
-export const PurchaseOrders: React.FC<PurchaseOrdersProps> = ({ purchaseOrders, products, suppliers, onCreatePO, onReceivePO }) => {
+export const PurchaseOrders: React.FC<PurchaseOrdersProps> = ({ purchaseOrders, products, suppliers, onCreatePO, onReceivePO, companyProfile }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedSupplierId, setSelectedSupplierId] = useState('');
   const [poItems, setPoItems] = useState<PurchaseOrderItem[]>([]);
@@ -21,9 +22,7 @@ export const PurchaseOrders: React.FC<PurchaseOrdersProps> = ({ purchaseOrders, 
 
   const supplierProducts = products.filter(p => !p.supplierId || p.supplierId === selectedSupplierId);
 
-  // Smart Restock Logic: 
-  // Trigger: Stock < MinStock (Default 5)
-  // Action: Buy to Target (Default 20)
+  // Smart Restock Logic
   const recommendedRestock = useMemo(() => {
     const list: { product: Product, variant?: ProductVariant, current: number, toBuy: number }[] = [];
     
@@ -60,7 +59,6 @@ export const PurchaseOrders: React.FC<PurchaseOrdersProps> = ({ purchaseOrders, 
   };
 
   const autoFillPO = (supplierId: string) => {
-    // Find items for this supplier from recommendations
     const itemsForSupplier = recommendedRestock.filter(item => 
         !item.product.supplierId || item.product.supplierId === supplierId
     );
@@ -119,6 +117,94 @@ export const PurchaseOrders: React.FC<PurchaseOrdersProps> = ({ purchaseOrders, 
     setPoItems([]);
     setNotes('');
     setExpectedDate('');
+  };
+
+  const handlePrintPO = (po: PurchaseOrder) => {
+    const supplier = suppliers.find(s => s.id === po.supplierId);
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+
+    const html = `
+      <html>
+        <head>
+          <title>PO #${po.id.slice(-6)}</title>
+          <style>
+            body { font-family: 'Helvetica Neue', Arial, sans-serif; padding: 40px; color: #333; max-width: 800px; margin: 0 auto; }
+            .header { display: flex; justify-content: space-between; margin-bottom: 40px; border-bottom: 2px solid #333; padding-bottom: 20px; }
+            .title h1 { margin: 0; font-size: 24px; text-transform: uppercase; }
+            .meta { text-align: right; }
+            .info-grid { display: flex; justify-content: space-between; margin-bottom: 40px; }
+            .box h3 { font-size: 12px; text-transform: uppercase; color: #666; border-bottom: 1px solid #eee; padding-bottom: 5px; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 30px; font-size: 13px; }
+            th { text-align: left; border-bottom: 2px solid #eee; padding: 10px; text-transform: uppercase; font-size: 11px; }
+            td { border-bottom: 1px solid #eee; padding: 10px; }
+            .total { text-align: right; font-size: 18px; font-weight: bold; margin-top: 20px; }
+            .footer { margin-top: 60px; padding-top: 20px; border-top: 1px solid #eee; font-size: 11px; color: #888; text-align: center; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div class="title">
+              <h1>Purchase Order</h1>
+              <p style="margin: 5px 0 0; font-size: 14px;">${companyProfile?.name || 'TheDécorHub'}</p>
+            </div>
+            <div class="meta">
+              <p><strong>PO Number:</strong> #${po.id.slice(-6)}</p>
+              <p><strong>Date:</strong> ${new Date(po.date).toLocaleDateString()}</p>
+              <p><strong>Status:</strong> ${po.status}</p>
+            </div>
+          </div>
+
+          <div class="info-grid">
+            <div class="box" style="width: 45%;">
+              <h3>Vendor</h3>
+              <p><strong>${po.supplierName}</strong></p>
+              ${supplier ? `<p>${supplier.contactPerson}<br>${supplier.email}<br>${supplier.phone}</p>` : ''}
+            </div>
+            <div class="box" style="width: 45%;">
+              <h3>Ship To</h3>
+              <p><strong>${companyProfile?.name || 'Warehouse'}</strong></p>
+              <p>${companyProfile?.address || ''}<br>${companyProfile?.phone || ''}</p>
+            </div>
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th width="50%">Item</th>
+                <th width="15%" style="text-align: center;">Qty</th>
+                <th width="15%" style="text-align: right;">Unit Cost</th>
+                <th width="20%" style="text-align: right;">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${po.items.map(item => `
+                <tr>
+                  <td>${item.productName} ${item.variantName ? `<span style="color:#666">(${item.variantName})</span>` : ''}</td>
+                  <td style="text-align: center;">${item.quantity}</td>
+                  <td style="text-align: right;">৳${item.unitCost.toLocaleString()}</td>
+                  <td style="text-align: right;">৳${item.total.toLocaleString()}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+
+          <div class="total">
+            Total Amount: ৳${po.totalAmount.toLocaleString()}
+          </div>
+
+          ${po.notes ? `<div style="margin-top: 30px; font-size: 13px; background: #f9f9f9; padding: 15px;"><strong>Notes:</strong> ${po.notes}</div>` : ''}
+
+          <div class="footer">
+            <p>Authorized Signature: __________________________</p>
+            <p>${companyProfile?.name} | ${companyProfile?.email}</p>
+          </div>
+          <script>window.onload = function() { window.print(); }</script>
+        </body>
+      </html>
+    `;
+    printWindow.document.write(html);
+    printWindow.document.close();
   };
 
   return (
@@ -222,14 +308,23 @@ export const PurchaseOrders: React.FC<PurchaseOrdersProps> = ({ purchaseOrders, 
                 <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Total Cost</p>
                 <p className="text-2xl font-serif font-bold text-slate-900 dark:text-white">৳{po.totalAmount.toLocaleString()}</p>
               </div>
-              {po.status === 'Ordered' && (
+              <div className="flex gap-2">
                 <button 
-                  onClick={() => { if(confirm('Confirm goods receipt? This will update inventory levels and create an expense record.')) onReceivePO(po) }}
-                  className="bg-green-600 hover:bg-green-700 text-white px-5 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 shadow-lg active:scale-95 transition-all"
+                  onClick={() => handlePrintPO(po)}
+                  className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-500 p-2.5 rounded-xl transition-all"
+                  title="Print Purchase Order"
                 >
-                  <CheckCircle2 size={14} /> Receive Goods
+                  <Printer size={16} />
                 </button>
-              )}
+                {po.status === 'Ordered' && (
+                  <button 
+                    onClick={() => { if(confirm('Confirm goods receipt? This will update inventory levels and create an expense record.')) onReceivePO(po) }}
+                    className="bg-green-600 hover:bg-green-700 text-white px-5 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 shadow-lg active:scale-95 transition-all"
+                  >
+                    <CheckCircle2 size={14} /> Receive
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         ))}

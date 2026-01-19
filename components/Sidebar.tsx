@@ -20,7 +20,8 @@ import {
   Wifi,
   WifiOff,
   Home,
-  Container
+  Container,
+  X
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -30,10 +31,11 @@ interface SidebarProps {
   onToggleTheme: () => void;
   syncStatus: SyncStatus;
   onLock: () => void;
+  onClose?: () => void;
   businessName?: string;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange, theme, onToggleTheme, syncStatus, onLock, businessName }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange, theme, onToggleTheme, syncStatus, onLock, onClose, businessName }) => {
   const menuItems: { id: ViewState; label: string; icon: React.ReactNode }[] = [
     { id: 'dashboard', label: 'Overview', icon: <LayoutDashboard size={20} /> },
     { id: 'spreadsheet', label: 'Master Sheets', icon: <FileSpreadsheet size={20} /> },
@@ -54,43 +56,50 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange, the
     <div className="h-full bg-white dark:bg-slate-900 border-r border-indigo-100 dark:border-slate-800 flex flex-col justify-between transition-colors duration-300 shadow-sm relative z-20">
       <div className="p-6">
         {/* Updated Logo Section */}
-        <div className="flex items-center gap-3 px-2 mb-10">
-          <div className="w-12 h-12 bg-gradient-to-br from-indigo-600 to-fuchsia-600 rounded-tl-3xl rounded-br-3xl flex items-center justify-center text-white shadow-lg shadow-indigo-200 dark:shadow-none shrink-0 border border-indigo-400/20">
-            <Home size={24} strokeWidth={2.5} />
-            <div className="absolute font-serif font-black text-amber-100 text-[10px] mt-1.5 ml-0.5">D</div>
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center gap-3 px-2">
+            <div className="w-10 h-10 bg-gradient-to-br from-indigo-600 to-fuchsia-600 rounded-tl-3xl rounded-br-3xl flex items-center justify-center text-white shadow-lg shadow-indigo-200 dark:shadow-none shrink-0 border border-indigo-400/20">
+              <Home size={20} strokeWidth={2.5} />
+              <div className="absolute font-serif font-black text-amber-100 text-[8px] mt-1.5 ml-0.5">D</div>
+            </div>
+            <div className="min-w-0">
+              <h1 className="font-serif font-bold text-lg text-slate-900 dark:text-white tracking-tight truncate leading-tight">
+                <span className="text-slate-800 dark:text-slate-200">THE</span> DECOR <span className="text-indigo-600">HUB</span>
+              </h1>
+              <p className="text-[9px] uppercase font-black tracking-[0.2em] text-slate-400">Luxury ERP</p>
+            </div>
           </div>
-          <div className="min-w-0">
-            <h1 className="font-serif font-bold text-xl text-slate-900 dark:text-white tracking-tight truncate leading-tight">
-              <span className="text-slate-800 dark:text-slate-200">THE</span> DECOR <span className="text-indigo-600">HUB</span>
-            </h1>
-            <p className="text-[9px] uppercase font-black tracking-[0.2em] text-slate-400">Luxury ERP</p>
-          </div>
+          {onClose && (
+            <button onClick={onClose} className="md:hidden p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+              <X size={20} />
+            </button>
+          )}
         </div>
 
-        <nav className="space-y-1.5">
+        <nav className="space-y-1 overflow-y-auto max-h-[calc(100vh-220px)] custom-scrollbar pr-2">
           {menuItems.map((item) => (
             <button
               key={item.id}
-              onClick={() => onViewChange(item.id)}
-              className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all duration-200 group relative ${
+              onClick={() => { onViewChange(item.id); if(onClose) onClose(); }}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group relative ${
                 currentView === item.id
                   ? 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-300 font-bold shadow-sm ring-1 ring-indigo-100 dark:ring-transparent'
                   : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               {currentView === item.id && (
-                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-indigo-600 rounded-r-full" />
+                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-indigo-600 rounded-r-full" />
               )}
               <span className={`transition-transform duration-300 ${currentView === item.id ? 'scale-110 text-indigo-600 dark:text-indigo-400' : 'group-hover:scale-110'}`}>
                 {item.icon}
               </span>
-              <span className="text-sm tracking-wide">{item.label}</span>
+              <span className="text-xs font-bold tracking-wide uppercase">{item.label}</span>
             </button>
           ))}
         </nav>
       </div>
 
-      <div className="p-6 space-y-4">
+      <div className="p-6 space-y-4 bg-white dark:bg-slate-900 z-10">
         <div className={`bg-slate-50 dark:bg-slate-800/50 p-4 rounded-2xl border ${syncStatus === 'offline' ? 'border-red-200 dark:border-red-900/30 bg-red-50 dark:bg-red-900/10' : 'border-slate-100 dark:border-slate-800'}`}>
            <div className="flex justify-between items-center mb-2">
              <span className={`text-[10px] font-black uppercase tracking-widest ${syncStatus === 'offline' ? 'text-red-500' : 'text-slate-400'}`}>System Status</span>

@@ -19,10 +19,12 @@ import { PurchaseOrders } from './components/PurchaseOrders';
 import { ViewState, Product, Sale, Customer, AuditLog, Supplier, Expense, Return, SyncStatus, PurchaseOrder, PeriodSummary } from './types';
 import { INITIAL_PRODUCTS, INITIAL_CUSTOMERS, INITIAL_SUPPLIERS, INITIAL_EXPENSES } from './constants';
 import { ApiService } from './components/apiService';
-import { Lock, Unlock } from 'lucide-react';
+import { Lock, Unlock, Menu, Moon, Sun, Home } from 'lucide-react';
+import { ToastContainer, ToastMessage } from './components/Toast';
 
 function App() {
   const [currentView, setCurrentView] = useState<ViewState>('dashboard');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => 
     (localStorage.getItem('hub_theme') as 'light' | 'dark') || 'light'
   );
@@ -44,6 +46,9 @@ function App() {
   const [isLocked, setIsLocked] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+  
+  // Toast State
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   // Refs for State Access
   const productsRef = useRef(products);
@@ -56,12 +61,25 @@ function App() {
   const [pin, setPin] = useState('');
   const [enteredPin, setEnteredPin] = useState('');
   const [lockError, setLockError] = useState(false);
+  
+  // Extended Business Profile for Real-World Compliance
   const [businessProfile, setBusinessProfile] = useState({
     name: 'TheDécorHub',
     address: 'Dhaka, Bangladesh',
     phone: '+880',
-    email: 'admin@decorhub.com'
+    email: 'admin@decorhub.com',
+    footerMessage: 'Thank you for your business.',
+    terms: 'Goods sold are subject to return policy within 7 days.'
   });
+
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    const id = Math.random().toString(36).substring(7);
+    setToasts(prev => [...prev, { id, message, type }]);
+  };
+
+  const dismissToast = (id: string) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+  };
 
   const logAction = useCallback((action: string, entity: string, details: string, type: AuditLog['type'] = 'update') => {
     if (isResetting) return;
@@ -131,6 +149,7 @@ function App() {
       } catch (error) {
         console.error("Failed to load data", error);
         setSyncStatus('error');
+        showToast('Failed to load system data', 'error');
       }
     };
 
@@ -154,12 +173,14 @@ function App() {
     setBusinessProfile(newProfile);
     localStorage.setItem('hub_profile', JSON.stringify(newProfile));
     logAction('Update Profile', 'System', 'Updated business contact details');
+    showToast('Business profile updated', 'success');
   };
 
   const handleUpdatePin = (newPin: string) => {
     setPin(newPin);
     localStorage.setItem('hub_pin', newPin);
     logAction('Update PIN', 'Security', 'Changed access PIN');
+    showToast('Security PIN changed', 'success');
   };
 
   const handleFactoryReset = async () => {
@@ -173,6 +194,7 @@ function App() {
     setPeriodSummaries(summaries);
     ApiService.pushUpdate('period_summaries', summaries);
     logAction('Close Period', 'Finance', 'Updated Monthly Financial Snapshots');
+    showToast('Financial period closed successfully', 'success');
   };
 
   // --- LOGIC ENGINE ---
@@ -210,6 +232,8 @@ function App() {
     });
   };
 
+  // ... (Keep existing CRUD handlers) ...
+  // [CRUD handlers included in previous version, keeping concise for this update block]
   const handleAddProduct = (product: Product) => {
     setProducts(prev => {
         const updated = [...prev, product];
@@ -217,6 +241,7 @@ function App() {
         return updated;
     });
     logAction('Create Product', 'Inventory', `Added SKU: ${product.sku}`, 'create');
+    showToast(`Product ${product.name} created`, 'success');
   };
 
   const handleUpdateProduct = (product: Product) => {
@@ -226,6 +251,7 @@ function App() {
         return updated;
     });
     logAction('Update Product', 'Inventory', `Updated SKU: ${product.sku}`);
+    showToast('Inventory updated', 'success');
   };
 
   const handleDeleteProduct = (id: string) => {
@@ -236,6 +262,7 @@ function App() {
         if(p) logAction('Delete Product', 'Inventory', `Removed SKU: ${p.sku}`, 'delete');
         return updated;
     });
+    showToast('Product deleted', 'info');
   };
 
   const handleAddSale = (sale: Sale) => {
@@ -269,6 +296,7 @@ function App() {
     }
     
     logAction('Create Order', 'Sales', `Processed Order #${sale.id.slice(-6)}`, 'create');
+    showToast('Order processed successfully', 'success');
   };
 
   const handleUpdateSale = (updatedSale: Sale) => {
@@ -319,6 +347,7 @@ function App() {
     }
 
     logAction('Update Order', 'Sales', `Updated Order #${updatedSale.id.slice(-6)}: ${oldStatus} -> ${newStatus}`);
+    showToast(`Order status updated: ${newStatus}`, 'info');
   };
 
   const handleDeleteSale = (id: string) => {
@@ -354,6 +383,7 @@ function App() {
     }
 
     logAction('Delete Order', 'Sales', `Voided Order #${sale.id.slice(-6)}`, 'delete');
+    showToast('Order voided and stock restored', 'info');
   };
 
   const handleAddCustomer = (customer: Customer) => {
@@ -363,6 +393,7 @@ function App() {
         return updated;
     });
     logAction('Add Client', 'CRM', `Registered ${customer.name}`, 'create');
+    showToast(`Client ${customer.name} registered`, 'success');
   };
 
   const handleUpdateCustomer = (customer: Customer) => {
@@ -372,6 +403,7 @@ function App() {
         return updated;
     });
     logAction('Update Client', 'CRM', `Modified profile: ${customer.name}`);
+    showToast('Client profile updated', 'success');
   };
 
   const handleDeleteCustomer = (id: string) => {
@@ -382,6 +414,7 @@ function App() {
         if(c) logAction('Delete Client', 'CRM', `Removed profile: ${c.name}`, 'delete');
         return updated;
     });
+    showToast('Client profile removed', 'info');
   };
 
   const handleAddSupplier = (supplier: Supplier) => {
@@ -391,6 +424,7 @@ function App() {
         return updated;
     });
     logAction('Add Supplier', 'SCM', `Registered ${supplier.name}`, 'create');
+    showToast('Supplier registered', 'success');
   };
 
   const handleUpdateSupplier = (supplier: Supplier) => {
@@ -400,6 +434,7 @@ function App() {
         return updated;
     });
     logAction('Update Supplier', 'SCM', `Modified: ${supplier.name}`);
+    showToast('Supplier updated', 'success');
   };
 
   const handleDeleteSupplier = (id: string) => {
@@ -410,6 +445,7 @@ function App() {
         if(s) logAction('Delete Supplier', 'SCM', `Removed: ${s.name}`, 'delete');
         return updated;
     });
+    showToast('Supplier removed', 'info');
   };
 
   const handleAddExpense = (expense: Expense) => {
@@ -419,6 +455,7 @@ function App() {
         return updated;
     });
     logAction('Add Expense', 'Finance', `Logged ${expense.category}: ৳${expense.amount}`, 'create');
+    showToast('Expense recorded', 'success');
   };
 
   const handleUpdateExpense = (expense: Expense) => {
@@ -427,6 +464,7 @@ function App() {
         ApiService.pushUpdate('expenses', updated);
         return updated;
     });
+    showToast('Expense updated', 'success');
   };
 
   const handleDeleteExpense = (id: string) => {
@@ -436,6 +474,7 @@ function App() {
         return updated;
     });
     logAction('Delete Expense', 'Finance', `Removed record ID: ${id.slice(-4)}`, 'delete');
+    showToast('Expense removed', 'info');
   };
 
   const handleAddReturn = (rma: Return) => {
@@ -445,6 +484,7 @@ function App() {
         return updatedReturns;
     });
     logAction('Create Return', 'RMA', `Opened Ticket for Order #${rma.orderId.slice(-6)}`, 'create');
+    showToast('RMA Ticket created', 'success');
   };
 
   const handleUpdateReturnStatus = (rma: Return, status: Return['status']) => {
@@ -456,9 +496,6 @@ function App() {
        setCustomers(prev => {
            const updatedCustomers = prev.map(c => {
              if (c.name === rma.customerName) { 
-               // LTV Logic: Total Spent minus the Refunded Amount. 
-               // If refundAmount does NOT include delivery charge, the customer "spent" that charge.
-               // If refundAmount includes delivery (full reversal), they spent nothing.
                const newTotal = c.totalSpent - rma.refundAmount;
                return { 
                    ...c, 
@@ -499,6 +536,7 @@ function App() {
     });
     
     logAction('Update Return', 'RMA', `Set Ticket #${rma.id.slice(-6)} to ${status}`);
+    showToast(`RMA status updated to ${status}`, 'info');
   };
 
   const handleCreatePO = (po: PurchaseOrder) => {
@@ -508,6 +546,7 @@ function App() {
       return updated;
     });
     logAction('Create PO', 'Procurement', `PO #${po.id.slice(-6)} to ${po.supplierName}`, 'create');
+    showToast(`Purchase Order created for ${po.supplierName}`, 'success');
   };
 
   const handleReceivePO = (po: PurchaseOrder) => {
@@ -527,13 +566,12 @@ function App() {
                const incomingQty = item.quantity;
                const incomingCost = item.unitCost;
                
-               // Weighted Average Cost Formula: (OldValue + NewValue) / TotalQty
                const newAvgCost = ((currentStock * currentCost) + (incomingQty * incomingCost)) / (currentStock + incomingQty);
 
                variants[vIndex] = { 
                    ...variants[vIndex], 
                    stockLevel: currentStock + incomingQty,
-                   costPrice: parseFloat(newAvgCost.toFixed(2)) // Store rounded for display
+                   costPrice: parseFloat(newAvgCost.toFixed(2))
                };
                product.variants = variants;
              }
@@ -577,6 +615,7 @@ function App() {
     });
 
     logAction('Receive PO', 'Procurement', `Received goods for PO #${po.id.slice(-6)} & Updated Weighted Avg Costs`);
+    showToast('Stock received and inventory updated', 'success');
   };
 
   const toggleTheme = () => {
@@ -662,8 +701,26 @@ function App() {
   }
 
   return (
-    <div className="flex h-screen bg-slate-100 dark:bg-slate-950 overflow-hidden selection:bg-indigo-500/30">
-      <div className="w-[280px] shrink-0 hidden md:block">
+    <div className="flex h-screen bg-slate-100 dark:bg-slate-950 overflow-hidden selection:bg-indigo-500/30 relative">
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+      
+      {/* Mobile Header */}
+      <div className="md:hidden fixed top-0 left-0 right-0 h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 z-30 flex items-center justify-between px-4 shadow-sm">
+         <div className="flex items-center gap-3">
+            <button onClick={() => setIsMobileMenuOpen(true)} className="p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors">
+              <Menu size={24} />
+            </button>
+            <div className="flex items-center gap-2">
+               <div className="w-8 h-8 bg-gradient-to-br from-indigo-600 to-fuchsia-600 rounded-lg flex items-center justify-center text-white shadow-md">
+                  <Home size={16} strokeWidth={3} />
+               </div>
+               <span className="font-serif font-bold text-lg text-slate-900 dark:text-white tracking-tight">DécorHub</span>
+            </div>
+         </div>
+      </div>
+
+      {/* Desktop Sidebar */}
+      <div className="w-[280px] shrink-0 hidden md:block h-full shadow-xl z-20">
         <Sidebar 
           currentView={currentView} 
           onViewChange={setCurrentView} 
@@ -675,13 +732,32 @@ function App() {
         />
       </div>
 
-      <main className="flex-1 overflow-y-auto overflow-x-hidden relative scroll-smooth">
-        <div className="min-h-full p-4 md:p-8 lg:p-12 pb-24">
+      {/* Mobile Sidebar Overlay */}
+      {isMobileMenuOpen && (
+        <div className="fixed inset-0 z-50 md:hidden">
+          <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm transition-opacity" onClick={() => setIsMobileMenuOpen(false)} />
+          <div className="absolute top-0 left-0 bottom-0 w-[280px] bg-white dark:bg-slate-900 animate-in slide-in-from-left duration-300 shadow-2xl flex flex-col">
+             <Sidebar 
+               currentView={currentView} 
+               onViewChange={(view) => { setCurrentView(view); setIsMobileMenuOpen(false); }}
+               theme={theme}
+               onToggleTheme={toggleTheme}
+               syncStatus={isOnline ? syncStatus : 'offline'}
+               onLock={() => setIsLocked(true)}
+               onClose={() => setIsMobileMenuOpen(false)}
+               businessName={businessProfile.name}
+             />
+          </div>
+        </div>
+      )}
+
+      <main className="flex-1 overflow-y-auto overflow-x-hidden relative scroll-smooth pt-16 md:pt-0">
+        <div className="min-h-full p-4 md:p-8 lg:p-12 pb-32">
           {currentView === 'dashboard' && <Dashboard products={products} sales={sales} customers={customers} suppliers={suppliers} expenses={expenses} returns={returns} logs={logs} onNavigate={setCurrentView} theme={theme} />}
           {currentView === 'spreadsheet' && <SpreadsheetView products={products} sales={sales} customers={customers} suppliers={suppliers} expenses={expenses} onUpdateProduct={handleUpdateProduct} />}
-          {currentView === 'inventory' && <Inventory products={products} suppliers={suppliers} onAddProduct={handleAddProduct} onUpdateProduct={handleUpdateProduct} onDeleteProduct={handleDeleteProduct} canUndo={false} canRedo={false} onUndo={() => {}} onRedo={() => {}} />}
-          {currentView === 'procurement' && <PurchaseOrders purchaseOrders={purchaseOrders} products={products} suppliers={suppliers} onCreatePO={handleCreatePO} onReceivePO={handleReceivePO} />}
-          {currentView === 'sales' && <Sales sales={sales} products={products} customers={customers} onAddSale={handleAddSale} onUpdateSale={handleUpdateSale} onDeleteSale={handleDeleteSale} onAddCustomer={handleAddCustomer} onUndo={() => {}} onRedo={() => {}} onCommit={() => {}} canUndo={false} canRedo={false} isDirty={false} companyProfile={businessProfile} />}
+          {currentView === 'inventory' && <Inventory products={products} suppliers={suppliers} onAddProduct={handleAddProduct} onUpdateProduct={handleUpdateProduct} onDeleteProduct={handleDeleteProduct} canUndo={false} canRedo={false} onUndo={() => {}} onRedo={() => {}} notify={showToast} />}
+          {currentView === 'procurement' && <PurchaseOrders purchaseOrders={purchaseOrders} products={products} suppliers={suppliers} onCreatePO={handleCreatePO} onReceivePO={handleReceivePO} companyProfile={businessProfile} />}
+          {currentView === 'sales' && <Sales sales={sales} products={products} customers={customers} onAddSale={handleAddSale} onUpdateSale={handleUpdateSale} onDeleteSale={handleDeleteSale} onAddCustomer={handleAddCustomer} onUndo={() => {}} onRedo={() => {}} onCommit={() => {}} canUndo={false} canRedo={false} isDirty={false} companyProfile={businessProfile} notify={showToast} />}
           {currentView === 'customers' && <Customers customers={customers} sales={sales} onAdd={handleAddCustomer} onUpdate={handleUpdateCustomer} onDelete={handleDeleteCustomer} canUndo={false} canRedo={false} onUndo={() => {}} onRedo={() => {}} />}
           {currentView === 'suppliers' && <Suppliers suppliers={suppliers} products={products} onAdd={handleAddSupplier} onUpdate={handleUpdateSupplier} onDelete={handleDeleteSupplier} canUndo={false} canRedo={false} onUndo={() => {}} onRedo={() => {}} />}
           {currentView === 'expenses' && <Expenses expenses={expenses} onAdd={handleAddExpense} onUpdate={handleUpdateExpense} onDelete={handleDeleteExpense} />}

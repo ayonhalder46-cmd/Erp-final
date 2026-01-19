@@ -1,8 +1,8 @@
 
 import React, { useState, useMemo } from 'react';
 import { Product, Sale, Customer, Supplier, ViewState, Expense, AuditLog, Return } from '../types';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { Users, ShoppingBag, Truck, TrendingUp, TrendingDown, Package, Wallet, Clock, Calendar, Activity, Sparkles, ArrowRight, ArrowUpRight, CheckCircle2 } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, AreaChart, Area } from 'recharts';
+import { Users, ShoppingBag, Truck, TrendingUp, TrendingDown, Package, Wallet, Clock, Calendar, Activity, Sparkles, ArrowRight, ArrowUpRight, CheckCircle2, Trophy } from 'lucide-react';
 
 interface DashboardProps {
   products: Product[];
@@ -41,6 +41,27 @@ export const Dashboard: React.FC<DashboardProps> = ({ products, sales, customers
       return acc + (p.stockLevel * p.costPrice);
     }, 0);
   }, [products]);
+
+  // Top Selling Products Calculation
+  const topProducts = useMemo(() => {
+    const counts: Record<string, { name: string, qty: number, revenue: number, image?: string }> = {};
+    completedSales.forEach(sale => {
+      sale.items.forEach(item => {
+        if (!counts[item.productId]) {
+          const product = products.find(p => p.id === item.productId);
+          counts[item.productId] = { 
+            name: item.productName, 
+            qty: 0, 
+            revenue: 0,
+            image: product?.image 
+          };
+        }
+        counts[item.productId].qty += item.quantity;
+        counts[item.productId].revenue += item.total;
+      });
+    });
+    return Object.values(counts).sort((a, b) => b.revenue - a.revenue).slice(0, 3);
+  }, [completedSales, products]);
 
   // Chart Data Preparation (Last 6 Months Trend)
   const chartData = useMemo(() => {
@@ -231,7 +252,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ products, sales, customers
            </div>
            <div className="h-[300px] w-full">
              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+                <AreaChart data={chartData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+                   <defs>
+                     <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
+                       <stop offset="5%" stopColor="#7c3aed" stopOpacity={0.3}/>
+                       <stop offset="95%" stopColor="#7c3aed" stopOpacity={0}/>
+                     </linearGradient>
+                   </defs>
                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={theme === 'dark' ? '#334155' : '#e2e8f0'} />
                    <XAxis 
                      dataKey="name" 
@@ -256,48 +283,79 @@ export const Dashboard: React.FC<DashboardProps> = ({ products, sales, customers
                      }}
                      formatter={(value: number) => [`৳${value.toLocaleString()}`, 'Net Revenue']}
                    />
-                   <Bar dataKey="revenue" radius={[6, 6, 0, 0]} barSize={40}>
-                      {chartData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.fullDate === selectedMonth ? '#7c3aed' : (theme === 'dark' ? '#334155' : '#e4e4e7')} />
-                      ))}
-                   </Bar>
-                </BarChart>
+                   <Area type="monotone" dataKey="revenue" stroke="#7c3aed" strokeWidth={3} fillOpacity={1} fill="url(#colorRevenue)" />
+                </AreaChart>
              </ResponsiveContainer>
            </div>
         </div>
 
-        {/* Recent Activity Feed */}
-        <div className="bg-white dark:bg-slate-900/50 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 p-8 shadow-sm flex flex-col">
-           <h3 className="font-bold text-lg text-slate-900 dark:text-white flex items-center gap-2 mb-6">
-              <Activity size={20} className="text-indigo-500" /> Live Feed
-           </h3>
-           <div className="flex-1 space-y-6 overflow-y-auto max-h-[300px] custom-scrollbar pr-2">
-              {recentActivity.map((log) => (
-                <div key={log.id} className="flex gap-4 group">
-                   <div className={`mt-1 w-2 h-2 rounded-full shrink-0 ${
-                      log.type === 'create' ? 'bg-green-500' : 
-                      log.type === 'delete' ? 'bg-red-500' : 
-                      log.type === 'update' ? 'bg-blue-500' : 'bg-slate-400'
-                   }`} />
-                   <div>
-                      <p className="text-sm font-bold text-slate-800 dark:text-white leading-tight">{log.action}</p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 line-clamp-1">{log.details}</p>
-                      <p className="text-[10px] text-slate-300 dark:text-slate-600 mt-1 font-mono">
-                        {new Date(log.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                      </p>
+        {/* Top Movers & Feed */}
+        <div className="space-y-6">
+           {/* Top Movers */}
+           <div className="bg-white dark:bg-slate-900/50 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 p-8 shadow-sm">
+              <h3 className="font-bold text-lg text-slate-900 dark:text-white flex items-center gap-2 mb-6">
+                 <Trophy size={20} className="text-amber-500" /> Top Movers
+              </h3>
+              <div className="space-y-4">
+                 {topProducts.length > 0 ? topProducts.map((item, idx) => (
+                   <div key={idx} className="flex items-center gap-4 group">
+                      <div className="w-12 h-12 bg-slate-100 dark:bg-slate-800 rounded-xl flex items-center justify-center shrink-0 border border-slate-200 dark:border-slate-700 overflow-hidden">
+                         {item.image ? (
+                           <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
+                         ) : (
+                           <Package size={20} className="text-slate-400"/>
+                         )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                         <p className="font-bold text-sm text-slate-800 dark:text-white truncate">{item.name}</p>
+                         <p className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
+                           {item.qty} units sold
+                         </p>
+                      </div>
+                      <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10 px-2 py-1 rounded-lg">
+                        ৳{item.revenue.toLocaleString()}
+                      </span>
                    </div>
-                </div>
-              ))}
-              {recentActivity.length === 0 && (
-                <div className="text-center text-slate-400 italic text-sm py-10">No recent system activity.</div>
-              )}
+                 )) : (
+                   <p className="text-center text-slate-400 text-xs italic py-4">No sales data for this period.</p>
+                 )}
+              </div>
            </div>
-           <button 
-             onClick={() => onNavigate('audit')}
-             className="w-full mt-6 py-3 text-xs font-bold uppercase tracking-widest text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 rounded-xl transition-colors flex items-center justify-center gap-2"
-           >
-             View Full Audit Log <ArrowUpRight size={14} />
-           </button>
+
+           {/* Recent Activity Feed */}
+           <div className="bg-white dark:bg-slate-900/50 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 p-8 shadow-sm flex flex-col">
+              <h3 className="font-bold text-lg text-slate-900 dark:text-white flex items-center gap-2 mb-6">
+                 <Activity size={20} className="text-indigo-500" /> Live Feed
+              </h3>
+              <div className="flex-1 space-y-6 overflow-y-auto max-h-[300px] custom-scrollbar pr-2">
+                 {recentActivity.map((log) => (
+                   <div key={log.id} className="flex gap-4 group relative">
+                      <div className="absolute left-[3px] top-4 bottom-[-20px] w-[2px] bg-slate-100 dark:bg-slate-800 group-last:hidden"></div>
+                      <div className={`mt-1 w-2 h-2 rounded-full shrink-0 z-10 ring-4 ring-white dark:ring-slate-900 ${
+                         log.type === 'create' ? 'bg-green-500' : 
+                         log.type === 'delete' ? 'bg-red-500' : 
+                         log.type === 'update' ? 'bg-blue-500' : 'bg-slate-400'
+                      }`} />
+                      <div>
+                         <p className="text-sm font-bold text-slate-800 dark:text-white leading-tight">{log.action}</p>
+                         <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 line-clamp-1">{log.details}</p>
+                         <p className="text-[10px] text-slate-300 dark:text-slate-600 mt-1 font-mono">
+                           {new Date(log.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                         </p>
+                      </div>
+                   </div>
+                 ))}
+                 {recentActivity.length === 0 && (
+                   <div className="text-center text-slate-400 italic text-sm py-10">No recent system activity.</div>
+                 )}
+              </div>
+              <button 
+                onClick={() => onNavigate('audit')}
+                className="w-full mt-6 py-3 text-xs font-bold uppercase tracking-widest text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 rounded-xl transition-colors flex items-center justify-center gap-2"
+              >
+                View Full Audit Log <ArrowUpRight size={14} />
+              </button>
+           </div>
         </div>
       </div>
     </div>

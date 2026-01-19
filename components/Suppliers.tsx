@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { Supplier, Product } from '../types';
-import { Plus, Phone, Mail, Trash2, Truck, Users, X, Edit2, Undo2, Redo2 } from 'lucide-react';
+import { Plus, Phone, Mail, Trash2, Truck, Users, X, Edit2, Undo2, Redo2, Package } from 'lucide-react';
 
 // Define the categories for sourcing domain selection.
 const CATEGORIES = [
@@ -56,6 +56,10 @@ export const Suppliers: React.FC<SuppliersProps> = ({
       onAdd({ ...formData, id: Date.now().toString() } as Supplier);
     }
     setIsModalOpen(false);
+  };
+
+  const getProductCount = (supplierId: string) => {
+    return products.filter(p => p.supplierId === supplierId).length;
   };
 
   return (
@@ -115,7 +119,11 @@ export const Suppliers: React.FC<SuppliersProps> = ({
               </div>
             </div>
             
-            <div className="mt-8">
+            <div className="mt-8 flex items-center justify-between">
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 dark:bg-slate-800 rounded-lg text-xs font-bold text-slate-500 dark:text-slate-400">
+                 <Package size={12} />
+                 <span>{getProductCount(s.id)} Items</span>
+              </div>
               <span className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border ${
                 s.status === 'Active' ? 'bg-green-50 text-green-700 border-green-100 dark:bg-green-500/10 dark:text-green-400 dark:border-green-500/20' : 'bg-slate-50 text-slate-500 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700'
               }`}>

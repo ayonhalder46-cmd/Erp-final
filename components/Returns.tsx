@@ -1,7 +1,7 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Return, Sale, Expense } from '../types';
-import { RotateCcw, CheckCircle2, X, AlertTriangle, Search, Package, Truck, Layers, Info, Calculator, Coins } from 'lucide-react';
+import { RotateCcw, CheckCircle2, X, AlertTriangle, Search, Package, Truck, Layers, Info, Calculator, Coins, RefreshCcw, Archive } from 'lucide-react';
 
 interface ReturnsProps {
   returns: Return[];
@@ -32,6 +32,22 @@ export const Returns: React.FC<ReturnsProps> = ({ returns, sales, onAdd, onUpdat
   });
 
   const selectedSale = sales.find(s => s.id === selectedOrderId);
+
+  // Stats Logic
+  const stats = useMemo(() => {
+    const pending = returns.filter(r => r.status === 'Pending');
+    const approved = returns.filter(r => r.status === 'Approved');
+    const rejected = returns.filter(r => r.status === 'Rejected');
+    
+    const totalRefunded = approved.reduce((acc, r) => acc + r.refundAmount, 0);
+    
+    return {
+        pendingCount: pending.length,
+        approvedCount: approved.length,
+        rejectedCount: rejected.length,
+        totalRefunded
+    };
+  }, [returns]);
 
   // Reset toggles when order changes
   useEffect(() => {
@@ -143,7 +159,8 @@ export const Returns: React.FC<ReturnsProps> = ({ returns, sales, onAdd, onUpdat
   );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
+      {/* Header Area */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h2 className="text-3xl font-serif font-bold text-slate-900 dark:text-white">Returns & Refunds</h2>
@@ -154,11 +171,44 @@ export const Returns: React.FC<ReturnsProps> = ({ returns, sales, onAdd, onUpdat
         </button>
       </div>
 
+      {/* RMA Control Center Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+         <div className="bg-amber-50 dark:bg-amber-900/10 p-6 rounded-[2rem] border border-amber-100 dark:border-amber-900/20 flex items-center gap-4">
+            <div className="p-4 bg-white dark:bg-amber-900/30 rounded-2xl text-amber-500">
+               <AlertTriangle size={24} />
+            </div>
+            <div>
+               <p className="text-[10px] font-black uppercase tracking-widest text-amber-700 dark:text-amber-400">Action Required</p>
+               <p className="text-2xl font-serif font-bold text-slate-900 dark:text-white">{stats.pendingCount} <span className="text-sm font-sans font-medium text-slate-500">Pending</span></p>
+            </div>
+         </div>
+
+         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-[2rem] flex items-center gap-4 shadow-sm">
+            <div className="p-4 bg-slate-100 dark:bg-slate-800 rounded-2xl text-slate-500">
+               <RefreshCcw size={24} />
+            </div>
+            <div>
+               <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Total Refunded</p>
+               <p className="text-2xl font-serif font-bold text-slate-900 dark:text-white">৳{stats.totalRefunded.toLocaleString()}</p>
+            </div>
+         </div>
+
+         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-[2rem] flex items-center gap-4 shadow-sm">
+            <div className="p-4 bg-slate-100 dark:bg-slate-800 rounded-2xl text-slate-500">
+               <Archive size={24} />
+            </div>
+            <div>
+               <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">History Volume</p>
+               <p className="text-2xl font-serif font-bold text-slate-900 dark:text-white">{stats.approvedCount + stats.rejectedCount} <span className="text-sm font-sans font-medium text-slate-500">Processed</span></p>
+            </div>
+         </div>
+      </div>
+
       <div className="relative group">
         <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
         <input 
           type="text" 
-          placeholder="Search returns..." 
+          placeholder="Search returns by customer, order ID, or product..." 
           className="w-full pl-14 pr-6 py-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-[2rem] outline-none focus:ring-2 focus:ring-indigo-500/50 dark:text-white font-medium shadow-sm transition-all"
           value={searchTerm}
           onChange={e => setSearchTerm(e.target.value)}
