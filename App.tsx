@@ -16,10 +16,11 @@ import { AuditTrail } from './components/AuditTrail';
 import { Advisor } from './components/Advisor';
 import { SpreadsheetView } from './components/SpreadsheetView';
 import { PurchaseOrders } from './components/PurchaseOrders';
+import { TutorialGuide } from './components/TutorialGuide';
 import { ViewState, Product, Sale, Customer, AuditLog, Supplier, Expense, Return, SyncStatus, PurchaseOrder, PeriodSummary } from './types';
 import { INITIAL_PRODUCTS, INITIAL_CUSTOMERS, INITIAL_SUPPLIERS, INITIAL_EXPENSES } from './constants';
 import { ApiService } from './components/apiService';
-import { Lock, Unlock, Menu, Moon, Sun, Home } from 'lucide-react';
+import { Lock, Unlock, Menu, Moon, Sun, Home, HelpCircle, X } from 'lucide-react';
 import { ToastContainer, ToastMessage } from './components/Toast';
 
 function App() {
@@ -29,6 +30,12 @@ function App() {
     (localStorage.getItem('hub_theme') as 'light' | 'dark') || 'light'
   );
   
+  // Tutorial State
+  const [showTutorial, setShowTutorial] = useState(false);
+
+  // Navigation State for Deep Linking (Sales -> Returns)
+  const [preSelectedOrderId, setPreSelectedOrderId] = useState<string | null>(null);
+
   // Data State
   const [products, setProducts] = useState<Product[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
@@ -197,6 +204,12 @@ function App() {
     showToast('Financial period closed successfully', 'success');
   };
 
+  const handleRequestReturn = (saleId: string) => {
+    setPreSelectedOrderId(saleId);
+    setCurrentView('returns');
+    showToast('Navigated to Returns processing', 'info');
+  };
+
   // --- LOGIC ENGINE ---
 
   const calculateTier = (totalSpent: number): Customer['tier'] => {
@@ -232,8 +245,6 @@ function App() {
     });
   };
 
-  // ... (Keep existing CRUD handlers) ...
-  // [CRUD handlers included in previous version, keeping concise for this update block]
   const handleAddProduct = (product: Product) => {
     setProducts(prev => {
         const updated = [...prev, product];
@@ -272,11 +283,12 @@ function App() {
         return updatedSales;
     });
     
-    if (sale.status === 'Confirmed' || sale.status === 'Delivered') {
+    // Logic: Only deduct stock if Delivered. Pending does not affect stock.
+    if (sale.status === 'Delivered') {
         adjustStock(sale.items, 'deduct');
     }
 
-    if (sale.status !== 'Cancelled' && sale.status !== 'Returned') {
+    if (sale.status === 'Delivered') {
       setCustomers(prev => {
           const updatedCustomers = prev.map(c => {
             if (c.id === sale.customerId) {
@@ -306,26 +318,29 @@ function App() {
     const oldStatus = oldSale.status;
     const newStatus = updatedSale.status;
     
-    const isOldConsumed = oldStatus === 'Confirmed' || oldStatus === 'Delivered';
-    const isNewConsumed = newStatus === 'Confirmed' || newStatus === 'Delivered';
+    // Define states that consume stock/revenue
+    const isOldConsumed = oldStatus === 'Delivered';
+    const isNewConsumed = newStatus === 'Delivered';
 
-    if (isOldConsumed) {
+    // 1. Stock Adjustment Logic
+    if (isOldConsumed && !isNewConsumed) {
+        // Was Delivered, now Pending/Cancelled/Returned -> Restore Stock
         adjustStock(oldSale.items, 'restore');
+    } else if (!isOldConsumed && isNewConsumed) {
+        // Was Pending, now Delivered -> Deduct Stock
+        adjustStock(updatedSale.items, 'deduct');
     }
 
+    // 2. Persist Update
     setSales(prev => {
         const updatedSales = prev.map(s => s.id === updatedSale.id ? updatedSale : s);
         ApiService.pushUpdate('sales', updatedSales);
         return updatedSales;
     });
 
-    if (isNewConsumed) {
-        adjustStock(updatedSale.items, 'deduct');
-    }
-
-    const oldContribution = (oldStatus !== 'Cancelled' && oldStatus !== 'Returned') ? oldSale.totalAmount : 0;
-    const newContribution = (newStatus !== 'Cancelled' && newStatus !== 'Returned') ? updatedSale.totalAmount : 0;
-    
+    // 3. Customer LTV Logic
+    const oldContribution = isOldConsumed ? oldSale.totalAmount : 0;
+    const newContribution = isNewConsumed ? updatedSale.totalAmount : 0;
     const ltvAdjustment = newContribution - oldContribution;
 
     if (ltvAdjustment !== 0) {
@@ -354,7 +369,8 @@ function App() {
     const sale = salesRef.current.find(s => s.id === id);
     if (!sale) return;
 
-    if (sale.status === 'Confirmed' || sale.status === 'Delivered') {
+    // Restore stock ONLY if it was previously deducted (Delivered)
+    if (sale.status === 'Delivered') {
         adjustStock(sale.items, 'restore');
     }
 
@@ -364,7 +380,8 @@ function App() {
         return updatedSales;
     });
     
-    if (sale.status !== 'Cancelled' && sale.status !== 'Returned') {
+    // Revert Customer LTV if it was counted
+    if (sale.status === 'Delivered') {
       setCustomers(prev => {
           const updatedCustomers = prev.map(c => {
             if (c.id === sale.customerId) {
@@ -383,7 +400,7 @@ function App() {
     }
 
     logAction('Delete Order', 'Sales', `Voided Order #${sale.id.slice(-6)}`, 'delete');
-    showToast('Order voided and stock restored', 'info');
+    showToast('Order removed from system', 'info');
   };
 
   const handleAddCustomer = (customer: Customer) => {
@@ -489,41 +506,56 @@ function App() {
 
   const handleUpdateReturnStatus = (rma: Return, status: Return['status']) => {
     if (status === 'Approved' && rma.status !== 'Approved') {
-       if (rma.condition === 'Resellable') {
-         adjustStock([{ productId: rma.productId, variantId: rma.variantId, quantity: rma.quantity }], 'restore');
-       }
+       const relatedSale = salesRef.current.find(s => s.id === rma.orderId);
        
-       setCustomers(prev => {
-           const updatedCustomers = prev.map(c => {
-             if (c.name === rma.customerName) { 
-               const newTotal = c.totalSpent - rma.refundAmount;
-               return { 
-                   ...c, 
-                   totalSpent: newTotal,
-                   tier: calculateTier(newTotal)
-               };
-             }
-             return c;
-           });
-           ApiService.pushUpdate('customers', updatedCustomers);
-           return updatedCustomers;
-       });
-
-       setSales(prev => {
-           const saleIndex = prev.findIndex(s => s.id === rma.orderId);
-           if (saleIndex > -1) {
-              const updatedSale = { ...prev[saleIndex] };
-              updatedSale.notes = updatedSale.notes 
-                ? `${updatedSale.notes} | RMA Approved: ${rma.id.slice(-4)}` 
-                : `RMA Approved: ${rma.id.slice(-4)}`;
-              
-              const newSales = [...prev];
-              newSales[saleIndex] = updatedSale;
-              ApiService.pushUpdate('sales', newSales);
-              return newSales;
+       if (relatedSale) {
+           // --- SCENARIO A: Resellable + Standard (No Refusal) ---
+           if (rma.condition === 'Resellable' && !rma.isDeliveryRefused) {
+               handleDeleteSale(relatedSale.id); 
            }
-           return prev;
-       });
+           // --- SCENARIO B: Resellable + Delivery Refused ---
+           else if (rma.condition === 'Resellable' && rma.isDeliveryRefused) {
+               const loss = relatedSale.deliveryCharge;
+               
+               const updatedSale = {
+                 ...relatedSale,
+                 status: 'Returned' as const,
+                 totalAmount: 0,
+                 totalCost: 0, 
+                 profit: -loss, 
+                 notes: (relatedSale.notes || '') + ' [REFUSED DELIVERY LOSS]'
+               };
+
+               if (loss > 0) {
+                   handleAddExpense({
+                        id: `EXP-LOSS-${Date.now()}`,
+                        date: new Date().toISOString(),
+                        category: 'Logistics',
+                        description: `Delivery Loss - Refusal #${relatedSale.id.slice(-6)}`,
+                        amount: loss,
+                        paymentMethod: 'System Record',
+                        status: 'Paid',
+                        referenceId: relatedSale.id
+                   });
+               }
+
+               handleUpdateSale(updatedSale);
+           }
+           // --- SCENARIO C: Damaged ---
+           else if (rma.condition === 'Damaged') {
+               const updatedSale = { 
+                 ...relatedSale, 
+                 status: 'Returned' as const,
+                 totalAmount: 0,
+                 profit: -relatedSale.totalCost - (rma.isDeliveryRefused ? relatedSale.deliveryCharge : 0),
+                 notes: (relatedSale.notes || '') + ' [RETURNED DAMAGED - TOTAL LOSS]'
+               };
+               
+               handleUpdateSale(updatedSale);
+               // Re-deduct stock because "Returned" status usually restores it
+               adjustStock(relatedSale.items, 'deduct');
+           }
+       }
     }
 
     setReturns(prev => {
@@ -536,7 +568,7 @@ function App() {
     });
     
     logAction('Update Return', 'RMA', `Set Ticket #${rma.id.slice(-6)} to ${status}`);
-    showToast(`RMA status updated to ${status}`, 'info');
+    showToast(`RMA processed: ${status}`, 'info');
   };
 
   const handleCreatePO = (po: PurchaseOrder) => {
@@ -704,6 +736,23 @@ function App() {
     <div className="flex h-screen bg-slate-100 dark:bg-slate-950 overflow-hidden selection:bg-indigo-500/30 relative">
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
       
+      {/* Help System Floating Button & Overlay */}
+      <div className="fixed bottom-6 right-6 z-[90]">
+        <button 
+          onClick={() => setShowTutorial(!showTutorial)}
+          className={`p-4 rounded-full shadow-2xl transition-all duration-300 hover:scale-110 active:scale-95 ${
+            showTutorial 
+              ? 'bg-white text-indigo-600 dark:bg-slate-800 dark:text-white rotate-45' 
+              : 'bg-indigo-600 text-white hover:bg-indigo-700'
+          }`}
+          title="Show Help Guide"
+        >
+          {showTutorial ? <X size={24} /> : <HelpCircle size={24} />}
+        </button>
+      </div>
+      
+      {showTutorial && <TutorialGuide view={currentView} onClose={() => setShowTutorial(false)} />}
+
       {/* Mobile Header */}
       <div className="md:hidden fixed top-0 left-0 right-0 h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 z-30 flex items-center justify-between px-4 shadow-sm">
          <div className="flex items-center gap-3">
@@ -757,13 +806,13 @@ function App() {
           {currentView === 'spreadsheet' && <SpreadsheetView products={products} sales={sales} customers={customers} suppliers={suppliers} expenses={expenses} onUpdateProduct={handleUpdateProduct} />}
           {currentView === 'inventory' && <Inventory products={products} suppliers={suppliers} onAddProduct={handleAddProduct} onUpdateProduct={handleUpdateProduct} onDeleteProduct={handleDeleteProduct} canUndo={false} canRedo={false} onUndo={() => {}} onRedo={() => {}} notify={showToast} />}
           {currentView === 'procurement' && <PurchaseOrders purchaseOrders={purchaseOrders} products={products} suppliers={suppliers} onCreatePO={handleCreatePO} onReceivePO={handleReceivePO} companyProfile={businessProfile} />}
-          {currentView === 'sales' && <Sales sales={sales} products={products} customers={customers} onAddSale={handleAddSale} onUpdateSale={handleUpdateSale} onDeleteSale={handleDeleteSale} onAddCustomer={handleAddCustomer} onUndo={() => {}} onRedo={() => {}} onCommit={() => {}} canUndo={false} canRedo={false} isDirty={false} companyProfile={businessProfile} notify={showToast} />}
+          {currentView === 'sales' && <Sales sales={sales} products={products} customers={customers} onAddSale={handleAddSale} onUpdateSale={handleUpdateSale} onDeleteSale={handleDeleteSale} onAddCustomer={handleAddCustomer} onUndo={() => {}} onRedo={() => {}} onCommit={() => {}} canUndo={false} canRedo={false} isDirty={false} companyProfile={businessProfile} notify={showToast} onRequestReturn={handleRequestReturn} />}
           {currentView === 'customers' && <Customers customers={customers} sales={sales} onAdd={handleAddCustomer} onUpdate={handleUpdateCustomer} onDelete={handleDeleteCustomer} canUndo={false} canRedo={false} onUndo={() => {}} onRedo={() => {}} />}
           {currentView === 'suppliers' && <Suppliers suppliers={suppliers} products={products} onAdd={handleAddSupplier} onUpdate={handleUpdateSupplier} onDelete={handleDeleteSupplier} canUndo={false} canRedo={false} onUndo={() => {}} onRedo={() => {}} />}
           {currentView === 'expenses' && <Expenses expenses={expenses} onAdd={handleAddExpense} onUpdate={handleUpdateExpense} onDelete={handleDeleteExpense} />}
-          {currentView === 'returns' && <Returns returns={returns} sales={sales} onAdd={handleAddReturn} onUpdateStatus={handleUpdateReturnStatus} onAddExpense={handleAddExpense} />}
+          {currentView === 'returns' && <Returns returns={returns} sales={sales} onAdd={handleAddReturn} onUpdateStatus={handleUpdateReturnStatus} onAddExpense={handleAddExpense} preSelectedOrderId={preSelectedOrderId} />}
           {currentView === 'reports' && <Reports sales={sales} products={products} customers={customers} expenses={expenses} returns={returns} periodSummaries={periodSummaries} onUpdateSummaries={handleUpdatePeriodSummaries} theme={theme} />}
-          {currentView === 'calculator' && <PriceCalculator />}
+          {currentView === 'calculator' && <PriceCalculator products={products} onUpdateProduct={handleUpdateProduct} />}
           {currentView === 'tester' && <WorkflowTester onAddProduct={handleAddProduct} onAddSale={handleAddSale} onAddReturn={handleAddReturn} onUpdateReturnStatus={handleUpdateReturnStatus} onAddCustomer={handleAddCustomer} onAddSupplier={handleAddSupplier} onAddExpense={handleAddExpense} onUpdateSale={handleUpdateSale} onCreatePO={handleCreatePO} onReceivePO={handleReceivePO} onDeleteProduct={handleDeleteProduct} onDeleteSale={handleDeleteSale} onDeleteCustomer={handleDeleteCustomer} onDeleteSupplier={handleDeleteSupplier} onDeleteExpense={handleDeleteExpense} />}
           {currentView === 'advisor' && <Advisor products={products} sales={sales} />}
           {currentView === 'audit' && <AuditTrail logs={logs} />}

@@ -5,7 +5,7 @@ import {
   Plus, Trash2, X, Undo2, Redo2, 
   Search, ShoppingCart, Package, ArrowRight, Layers, 
   Minus, ShoppingBag, Tag, AlertTriangle, Hash, User,
-  Filter, Eye, CheckCircle2, Clock, Ban, ChevronLeft, ChevronRight, Truck, Calendar, Printer, RefreshCw, MapPin, ChevronDown, Award, Wallet, RotateCcw, Edit
+  Filter, Eye, CheckCircle2, Clock, Ban, ChevronLeft, ChevronRight, Truck, Calendar, Printer, RefreshCw, MapPin, ChevronDown, Award, Wallet, RotateCcw, Edit, CreditCard, DollarSign, Phone
 } from 'lucide-react';
 
 interface SalesProps {
@@ -24,6 +24,7 @@ interface SalesProps {
   isDirty: boolean;
   companyProfile: { name: string; address: string; phone: string; email: string; footerMessage?: string; terms?: string };
   notify?: (msg: string, type: 'success' | 'error' | 'info') => void;
+  onRequestReturn?: (saleId: string) => void;
 }
 
 const CATEGORIES = [
@@ -31,8 +32,8 @@ const CATEGORIES = [
   'Wall Decor', 'Kitchenware', 'Garden', 'Accessories'
 ];
 
-// Aligned strictly with Google Sheets "STATUS_OPTIONS"
-const ORDER_STATUSES = ['All', 'Pending', 'Confirmed', 'Delivered', 'Returned', 'Cancelled'];
+const EDITABLE_STATUSES = ['Pending', 'Confirmed', 'Delivered', 'Cancelled'];
+const FILTER_STATUSES = ['All', 'Pending', 'Confirmed', 'Delivered', 'Returned', 'Cancelled'];
 
 // Helper for local date
 const getLocalDate = () => {
@@ -133,10 +134,14 @@ const PosProductCard: React.FC<PosProductCardProps> = ({ product, onAdd, cartIte
 
 export const Sales: React.FC<SalesProps> = ({ 
   sales, products, customers, onAddSale, onUpdateSale, onDeleteSale, onAddCustomer,
-  onUndo, onRedo, canUndo, canRedo, companyProfile, notify
+  onUndo, onRedo, canUndo, canRedo, companyProfile, notify, onRequestReturn
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
+  
+  // View Details Modal State
+  const [viewingOrder, setViewingOrder] = useState<Sale | null>(null);
+
   const [saleToDeleteId, setSaleToDeleteId] = useState<string | null>(null);
   const [selectedOrder, setSelectedOrder] = useState<Sale | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -149,7 +154,7 @@ export const Sales: React.FC<SalesProps> = ({
   const [customerSearch, setCustomerSearch] = useState('');
   const [ledgerSearch, setLedgerSearch] = useState('');
   const [isCustomerDropdownOpen, setIsCustomerDropdownOpen] = useState(false);
-  const [mobileTab, setMobileTab] = useState<'catalog' | 'cart'>('catalog'); // New Mobile Tab State
+  const [mobileTab, setMobileTab] = useState<'catalog' | 'cart'>('catalog');
   
   const customerDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -175,7 +180,7 @@ export const Sales: React.FC<SalesProps> = ({
     discountAmount: 0,
     deliveryCharge: 0,
     notes: '',
-    status: 'Confirmed'
+    status: 'Pending'
   });
 
   const [editingSaleId, setEditingSaleId] = useState<string | null>(null);
@@ -189,7 +194,6 @@ export const Sales: React.FC<SalesProps> = ({
     [customers, newSale.customerId]
   );
 
-  // Derive VIP Stats
   const vipStats = useMemo(() => {
     if (!selectedCustomer) return null;
     const orderCount = sales.filter(s => s.customerId === selectedCustomer.id && s.status !== 'Cancelled').length;
@@ -239,7 +243,6 @@ export const Sales: React.FC<SalesProps> = ({
     }
     
     const newId = Date.now().toString();
-    // Explicitly construct valid customer object to avoid missing fields
     const newCustomer: Customer = {
         id: newId,
         name: quickCustomer.name,
@@ -253,7 +256,7 @@ export const Sales: React.FC<SalesProps> = ({
 
     onAddCustomer(newCustomer);
     setNewSale({ ...newSale, customerId: newId });
-    setCustomerSearch(quickCustomer.name); // Updates dropdown search to show new user
+    setCustomerSearch(quickCustomer.name);
     setIsQuickAddOpen(false);
     setQuickCustomer({ name: '', address: '', phone: '', tier: 'Bronze', totalSpent: 0, lastPurchaseDate: 'N/A' });
   };
@@ -269,7 +272,6 @@ export const Sales: React.FC<SalesProps> = ({
     const items = [...(newSale.items || [])] as SaleItem[];
     const existingIndex = items.findIndex(i => i.productId === product.id && (variant ? i.variantId === variant.id : !i.variantId));
 
-    // Calculate maximum available stock
     const currentStock = variant ? variant.stockLevel : product.stockLevel;
     const itemInCart = items.find(i => i.productId === product.id && (variant ? i.variantId === variant.id : !i.variantId));
     const currentQtyInCart = itemInCart?.quantity || 0;
@@ -299,26 +301,33 @@ export const Sales: React.FC<SalesProps> = ({
     setNewSale({ ...newSale, items });
   };
 
+  // Helper to validate stock before changing status to Delivered
+  const validateStockForDelivery = (items: SaleItem[]) => {
+    for (const item of items) {
+        const product = products.find(p => p.id === item.productId);
+        if (!product) continue;
+        
+        const available = product.hasVariants && item.variantId 
+            ? (product.variants?.find(v => v.id === item.variantId)?.stockLevel || 0)
+            : product.stockLevel;
+            
+        if (available < item.quantity) {
+            return { valid: false, message: `Insufficient stock for ${item.productName}. Need ${item.quantity}, have ${available}.` };
+        }
+    }
+    return { valid: true };
+  };
+
   const handleSubmit = () => {
     if (!newSale.customerId || !newSale.items?.length) return;
 
-    if (!editingSaleId && (newSale.status === 'Confirmed' || newSale.status === 'Delivered')) {
-      for (const item of newSale.items) {
-        const product = products.find(p => p.id === item.productId);
-        if (product) {
-          let currentStock = product.stockLevel;
-          if (product.hasVariants && item.variantId) {
-             const v = product.variants?.find(v => v.id === item.variantId);
-             currentStock = v ? v.stockLevel : 0;
-          }
-          if (currentStock < item.quantity) {
-             const msg = `Validation Failed: Insufficient stock for ${item.productName}. \nAvailable: ${currentStock}, Requested: ${item.quantity}`;
-             if (notify) notify(msg, 'error');
-             else alert(msg);
-             return; 
-          }
+    if (!editingSaleId && (newSale.status === 'Delivered')) {
+        const check = validateStockForDelivery(newSale.items);
+        if (!check.valid) {
+            if (notify) notify(check.message!, 'error');
+            else alert(check.message);
+            return;
         }
-      }
     }
 
     const saleItems = newSale.items as SaleItem[];
@@ -338,7 +347,7 @@ export const Sales: React.FC<SalesProps> = ({
       totalCost: cost, 
       profit: total - cost,
       notes: newSale.notes || '', 
-      status: (newSale.status as any) || 'Confirmed' // Default to Confirmed for POS (deducts stock)
+      status: editingSaleId ? (newSale.status as any) : 'Pending'
     };
 
     if (editingSaleId) {
@@ -352,7 +361,7 @@ export const Sales: React.FC<SalesProps> = ({
   };
 
   const resetForm = () => {
-    setNewSale({ date: getLocalDate(), customerId: '', items: [], discountAmount: 0, deliveryCharge: 0, notes: '', status: 'Confirmed' });
+    setNewSale({ date: getLocalDate(), customerId: '', items: [], discountAmount: 0, deliveryCharge: 0, notes: '', status: 'Pending' });
     setCustomerSearch('');
     setEditingSaleId(null);
     setMobileTab('catalog');
@@ -362,19 +371,40 @@ export const Sales: React.FC<SalesProps> = ({
     setEditingSaleId(sale.id);
     setNewSale({
       ...sale,
-      items: [...sale.items] // Clone items
+      items: [...sale.items]
     });
     setCustomerSearch(sale.customerName);
-    setSelectedOrder(null); // Close details modal
-    setIsModalOpen(true); // Open POS modal
+    setSelectedOrder(null);
+    setViewingOrder(null); // Close detail view if open
+    setIsModalOpen(true);
   };
 
   const handleStatusChange = (sale: Sale, newStatus: Sale['status']) => {
+    if (newStatus === 'Cancelled') {
+      if(confirm('Are you sure you want to Cancel and Remove this order? Stock will be restored if it was delivered.')) {
+        onDeleteSale(sale.id);
+      }
+      return;
+    }
+
+    // Safety Check: If moving from Pending to Delivered, verify stock exists
+    if (sale.status === 'Pending' && newStatus === 'Delivered') {
+        const check = validateStockForDelivery(sale.items);
+        if (!check.valid) {
+            if (notify) notify(`Cannot Deliver: ${check.message}`, 'error');
+            else alert(`Cannot Deliver: ${check.message}`);
+            return;
+        }
+    }
+
     if (sale.status !== newStatus) {
         const updatedSale = { ...sale, status: newStatus };
         onUpdateSale(updatedSale);
         if (selectedOrder && selectedOrder.id === sale.id) {
             setSelectedOrder(updatedSale);
+        }
+        if (viewingOrder && viewingOrder.id === sale.id) {
+            setViewingOrder(updatedSale);
         }
     }
   };
@@ -396,22 +426,18 @@ export const Sales: React.FC<SalesProps> = ({
             .invoice-details { text-align: right; }
             .invoice-details h2 { margin: 0 0 5px; font-size: 16px; text-transform: uppercase; color: #666; }
             .invoice-details p { margin: 0; font-weight: bold; font-size: 14px; }
-            
             .bill-to { margin-bottom: 30px; }
             .bill-to h3 { font-size: 12px; text-transform: uppercase; color: #999; letter-spacing: 1px; margin-bottom: 5px; }
             .bill-to p { margin: 0; font-weight: bold; font-size: 16px; }
             .bill-to .address { font-weight: normal; font-size: 14px; color: #555; margin-top: 4px; max-width: 300px; }
-            
             table { width: 100%; border-collapse: collapse; margin-bottom: 30px; font-size: 13px; }
             thead th { text-align: left; padding: 12px 8px; border-bottom: 2px solid #eee; text-transform: uppercase; font-size: 11px; color: #666; }
             tbody td { padding: 12px 8px; border-bottom: 1px solid #eee; }
             .text-right { text-align: right; }
-            
             .totals { display: flex; justify-content: flex-end; }
             .totals-box { width: 250px; }
             .row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 13px; }
             .grand-total { border-top: 2px solid #333; padding-top: 10px; margin-top: 10px; font-weight: bold; font-size: 18px; }
-            
             .footer { margin-top: 60px; padding-top: 20px; border-top: 1px solid #eee; text-align: center; font-size: 11px; color: #999; }
             .terms { font-size: 10px; color: #888; margin-top: 10px; }
           </style>
@@ -430,13 +456,11 @@ export const Sales: React.FC<SalesProps> = ({
               <p style="font-weight: normal; font-size: 12px; margin-top: 2px; text-transform: uppercase;">Status: ${order.status}</p>
             </div>
           </div>
-
           <div class="bill-to">
             <h3>Billed To</h3>
             <p>${order.customerName}</p>
             ${customer ? `<div class="address">${customer.address || ''}<br>${customer.phone || ''}</div>` : ''}
           </div>
-
           <table>
             <thead>
               <tr>
@@ -460,7 +484,6 @@ export const Sales: React.FC<SalesProps> = ({
               `).join('')}
             </tbody>
           </table>
-
           <div class="totals">
              <div class="totals-box">
                <div class="row">
@@ -483,14 +506,11 @@ export const Sales: React.FC<SalesProps> = ({
                </div>
              </div>
           </div>
-
           <div class="footer">
             <p>${companyProfile.footerMessage || 'Thank you for your business.'}</p>
             ${companyProfile.terms ? `<p class="terms">${companyProfile.terms}</p>` : ''}
           </div>
-          <script>
-            window.onload = function() { window.print(); }
-          </script>
+          <script>window.onload = function() { window.print(); }</script>
         </body>
       </html>
     `;
@@ -563,7 +583,7 @@ export const Sales: React.FC<SalesProps> = ({
                value={selectedStatusFilter}
                onChange={(e) => setSelectedStatusFilter(e.target.value)}
              >
-               {ORDER_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+               {FILTER_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
              </select>
              <Filter size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
            </div>
@@ -590,13 +610,18 @@ export const Sales: React.FC<SalesProps> = ({
                 <th className="px-8 py-6 font-bold text-slate-600 dark:text-slate-300 text-[10px] uppercase tracking-widest">Customer</th>
                 <th className="px-8 py-6 font-bold text-slate-600 dark:text-slate-300 text-[10px] uppercase tracking-widest">Items</th>
                 <th className="px-8 py-6 font-bold text-slate-600 dark:text-slate-300 text-[10px] uppercase tracking-widest text-right">Total (৳)</th>
+                <th className="px-8 py-6 font-bold text-slate-600 dark:text-slate-300 text-[10px] uppercase tracking-widest text-right">Profit (৳)</th>
                 <th className="px-8 py-6 font-bold text-slate-600 dark:text-slate-300 text-[10px] uppercase tracking-widest">Status</th>
                 <th className="px-8 py-6 font-bold text-slate-600 dark:text-slate-300 text-[10px] uppercase tracking-widest text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {paginatedSales.map((sale) => (
-                <tr key={sale.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors group">
+                <tr 
+                  key={sale.id} 
+                  className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors group cursor-pointer"
+                  onClick={() => setViewingOrder(sale)}
+                >
                   <td className="px-8 py-6">
                     <div className="flex flex-col">
                        <span className="font-bold text-slate-800 dark:text-white">#{sale.id.slice(-6)}</span>
@@ -620,35 +645,61 @@ export const Sales: React.FC<SalesProps> = ({
                   <td className="px-8 py-6 text-right">
                     <span className="font-bold text-slate-900 dark:text-white font-mono">৳{sale.totalAmount.toLocaleString()}</span>
                   </td>
+                  <td className="px-8 py-6 text-right">
+                    <span className={`font-bold font-mono ${sale.profit >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`}>
+                      {sale.profit < 0 ? '-' : ''}৳{Math.abs(sale.profit).toLocaleString()}
+                    </span>
+                  </td>
                   <td className="px-8 py-6">
-                    <div className="relative group/status">
-                       <button className={`px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border flex items-center gap-2 w-fit ${getStatusStyle(sale.status)}`}>
+                    <div className="relative group/status inline-block" onClick={(e) => e.stopPropagation()}>
+                       <button className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest border flex items-center gap-2 w-full justify-center transition-all ${getStatusStyle(sale.status)}`}>
                          {getStatusIcon(sale.status)}
                          {sale.status}
+                         {(sale.status === 'Pending' || sale.status === 'Delivered' || sale.status === 'Confirmed') && (
+                           <ChevronDown size={10} className="ml-1 opacity-50" />
+                         )}
                        </button>
-                       {/* Quick Status Switcher Hover Menu */}
-                       <div className="absolute left-0 top-full mt-1 bg-white dark:bg-slate-900 shadow-xl rounded-xl border border-slate-100 dark:border-slate-800 p-1 z-50 hidden group-hover/status:block min-w-[120px]">
-                         {ORDER_STATUSES.filter(s => s !== 'All' && s !== sale.status).map(status => (
-                           <button 
-                             key={status}
-                             onClick={() => handleStatusChange(sale, status as Sale['status'])}
-                             className="w-full text-left px-3 py-2 text-[10px] font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg"
-                           >
-                             Set {status}
-                           </button>
-                         ))}
-                       </div>
+                       
+                       {/* Enhanced Dropdown for Status Change */}
+                       {(sale.status === 'Pending' || sale.status === 'Delivered' || sale.status === 'Confirmed') && (
+                         <div className="absolute left-0 top-full mt-2 bg-white dark:bg-slate-900 shadow-2xl rounded-xl border border-slate-100 dark:border-slate-800 p-1.5 z-50 hidden group-hover/status:block w-40 animate-in slide-in-from-top-2">
+                           <div className="text-[9px] font-bold text-slate-400 px-2 py-1 uppercase tracking-wider mb-1">Update Status</div>
+                           {EDITABLE_STATUSES.filter(s => s !== sale.status).map(status => (
+                             <button 
+                               key={status}
+                               onClick={() => handleStatusChange(sale, status as Sale['status'])}
+                               className={`w-full text-left px-3 py-2.5 text-[10px] font-bold rounded-lg transition-all flex items-center gap-2 mb-1 last:mb-0 ${
+                                 status === 'Cancelled' 
+                                   ? 'text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20' 
+                                   : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-indigo-600 dark:hover:text-indigo-400'
+                               }`}
+                             >
+                               {getStatusIcon(status)}
+                               Set {status}
+                             </button>
+                           ))}
+                         </div>
+                       )}
                     </div>
                   </td>
                   <td className="px-8 py-6 text-right">
-                    <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
+                      {sale.status === 'Delivered' && (
+                        <button 
+                          onClick={() => onRequestReturn && onRequestReturn(sale.id)} 
+                          className="p-2 text-indigo-500 hover:text-white hover:bg-indigo-600 dark:hover:bg-indigo-500 rounded-lg transition-colors" 
+                          title="Process Return"
+                        >
+                           <RotateCcw size={16} />
+                        </button>
+                      )}
                       <button onClick={() => handlePrintInvoice(sale)} className="p-2 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors" title="Print Invoice">
                          <Printer size={16} />
                       </button>
                       <button onClick={() => handleEditOrder(sale)} className="p-2 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors" title="Edit Order">
                          <Edit size={16} />
                       </button>
-                      <button onClick={() => onDeleteSale(sale.id)} className="p-2 text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors" title="Void Order">
+                      <button onClick={() => { if(confirm('Cancel and Delete Order?')) onDeleteSale(sale.id); }} className="p-2 text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors" title="Void Order">
                          <Trash2 size={16} />
                       </button>
                     </div>
@@ -657,7 +708,7 @@ export const Sales: React.FC<SalesProps> = ({
               ))}
               {paginatedSales.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-8 py-12 text-center text-slate-400 italic">No orders found matching criteria.</td>
+                  <td colSpan={7} className="px-8 py-12 text-center text-slate-400 italic">No orders found matching criteria.</td>
                 </tr>
               )}
             </tbody>
@@ -675,6 +726,169 @@ export const Sales: React.FC<SalesProps> = ({
           </div>
         )}
       </div>
+
+      {/* VIEW ORDER DETAIL MODAL */}
+      {viewingOrder && (
+        <div className="fixed inset-0 z-[110] bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
+           <div className="bg-white dark:bg-slate-900 w-full max-w-4xl rounded-[2.5rem] shadow-2xl border border-slate-200 dark:border-slate-800 flex flex-col max-h-[90vh] overflow-hidden animate-in zoom-in-95 duration-300">
+              
+              {/* Header */}
+              <div className="px-8 py-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 flex justify-between items-center shrink-0">
+                 <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+                       <Hash size={24} />
+                    </div>
+                    <div>
+                       <h3 className="text-xl font-serif font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                          Order #{viewingOrder.id.slice(-6)}
+                          <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border flex items-center gap-1.5 ${getStatusStyle(viewingOrder.status)}`}>
+                             {getStatusIcon(viewingOrder.status)} {viewingOrder.status}
+                          </span>
+                       </h3>
+                       <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 flex items-center gap-2">
+                          <Calendar size={12} /> {new Date(viewingOrder.date).toLocaleString()}
+                       </p>
+                    </div>
+                 </div>
+                 <button onClick={() => setViewingOrder(null)} className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-slate-400 hover:text-slate-600 dark:hover:text-white"><X size={24} /></button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+                    {/* Customer Card */}
+                    <div className="bg-slate-50 dark:bg-slate-800/50 rounded-3xl p-6 border border-slate-100 dark:border-slate-700/50">
+                       <h4 className="text-xs font-bold uppercase text-slate-400 tracking-widest mb-4 flex items-center gap-2"><User size={14}/> Customer Details</h4>
+                       <div className="space-y-3">
+                          <div className="flex justify-between">
+                             <span className="text-sm font-bold text-slate-700 dark:text-slate-200">{viewingOrder.customerName}</span>
+                             {getOrderCustomer(viewingOrder.id, viewingOrder.customerId)?.tier && (
+                                <span className="text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-bold">{getOrderCustomer(viewingOrder.id, viewingOrder.customerId)?.tier}</span>
+                             )}
+                          </div>
+                          <div className="flex items-center gap-2 text-xs text-slate-500">
+                             <Phone size={12} /> {getOrderCustomer(viewingOrder.id, viewingOrder.customerId)?.phone || 'N/A'}
+                          </div>
+                          <div className="flex items-start gap-2 text-xs text-slate-500">
+                             <MapPin size={12} className="mt-0.5" /> {getOrderCustomer(viewingOrder.id, viewingOrder.customerId)?.address || 'No Address'}
+                          </div>
+                          {getOrderCustomer(viewingOrder.id, viewingOrder.customerId) && (
+                             <div className="pt-3 mt-3 border-t border-slate-200 dark:border-slate-700 flex justify-between items-center text-xs">
+                                <span className="text-slate-400">Lifetime Value</span>
+                                <span className="font-mono font-bold text-indigo-500">৳{getOrderCustomer(viewingOrder.id, viewingOrder.customerId)?.totalSpent.toLocaleString()}</span>
+                             </div>
+                          )}
+                       </div>
+                    </div>
+
+                    {/* Financial Summary Card */}
+                    <div className="bg-slate-50 dark:bg-slate-800/50 rounded-3xl p-6 border border-slate-100 dark:border-slate-700/50">
+                       <h4 className="text-xs font-bold uppercase text-slate-400 tracking-widest mb-4 flex items-center gap-2"><CreditCard size={14}/> Financials</h4>
+                       <div className="space-y-2 text-sm">
+                          <div className="flex justify-between text-slate-500">
+                             <span>Subtotal</span>
+                             <span className="font-mono">৳{(viewingOrder.items.reduce((a,b) => a+b.total, 0)).toLocaleString()}</span>
+                          </div>
+                          <div className="flex justify-between text-slate-500">
+                             <span>Discount</span>
+                             <span className="font-mono text-red-400">-৳{viewingOrder.discountAmount.toLocaleString()}</span>
+                          </div>
+                          <div className="flex justify-between text-slate-500">
+                             <span>Delivery</span>
+                             <span className="font-mono">৳{viewingOrder.deliveryCharge.toLocaleString()}</span>
+                          </div>
+                          <div className="pt-3 mt-3 border-t border-slate-200 dark:border-slate-700 flex justify-between items-center">
+                             <span className="font-bold text-slate-800 dark:text-white">Grand Total</span>
+                             <span className="font-mono font-bold text-xl text-slate-900 dark:text-white">৳{viewingOrder.totalAmount.toLocaleString()}</span>
+                          </div>
+                          {/* Admin Only Profit View */}
+                          <div className="mt-4 bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200 dark:border-slate-700 flex justify-between items-center text-xs">
+                             <span className="font-bold text-slate-400 flex items-center gap-1"><DollarSign size={12}/> Net Profit</span>
+                             <span className={`font-mono font-bold ${viewingOrder.profit >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                {viewingOrder.profit >= 0 ? '+' : ''}৳{viewingOrder.profit.toLocaleString()}
+                             </span>
+                          </div>
+                       </div>
+                    </div>
+                 </div>
+
+                 {/* Line Items Table */}
+                 <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-3xl overflow-hidden mb-6">
+                    <table className="w-full text-left text-sm">
+                       <thead className="bg-slate-50 dark:bg-slate-800 text-xs text-slate-500 font-bold uppercase tracking-wider">
+                          <tr>
+                             <th className="px-6 py-4">Item</th>
+                             <th className="px-6 py-4 text-center">Qty</th>
+                             <th className="px-6 py-4 text-right">Unit Price</th>
+                             <th className="px-6 py-4 text-right">Total</th>
+                          </tr>
+                       </thead>
+                       <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                          {viewingOrder.items.map((item, idx) => (
+                             <tr key={idx}>
+                                <td className="px-6 py-4">
+                                   <p className="font-bold text-slate-900 dark:text-white">{item.productName}</p>
+                                   {item.variantName && <p className="text-xs text-slate-500">{item.variantName}</p>}
+                                </td>
+                                <td className="px-6 py-4 text-center font-mono">{item.quantity}</td>
+                                <td className="px-6 py-4 text-right font-mono text-slate-500">৳{item.unitPrice.toLocaleString()}</td>
+                                <td className="px-6 py-4 text-right font-mono font-bold">৳{item.total.toLocaleString()}</td>
+                             </tr>
+                          ))}
+                       </tbody>
+                    </table>
+                 </div>
+
+                 {viewingOrder.notes && (
+                    <div className="bg-yellow-50 dark:bg-yellow-900/10 p-4 rounded-2xl border border-yellow-100 dark:border-yellow-900/30 text-sm text-yellow-800 dark:text-yellow-200">
+                       <span className="font-bold uppercase text-[10px] tracking-widest block mb-1">Notes</span>
+                       {viewingOrder.notes}
+                    </div>
+                 )}
+              </div>
+
+              {/* Actions Footer */}
+              <div className="p-6 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 flex justify-between items-center gap-4 shrink-0">
+                 <div className="flex gap-2">
+                    {/* Quick Status Toggles */}
+                    {['Confirmed', 'Delivered'].map(status => (
+                        status !== viewingOrder.status && (
+                            <button 
+                                key={status}
+                                onClick={() => handleStatusChange(viewingOrder, status as Sale['status'])}
+                                className="px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                            >
+                                Mark {status}
+                            </button>
+                        )
+                    ))}
+                 </div>
+                 
+                 <div className="flex gap-2">
+                    <button 
+                        onClick={() => handlePrintInvoice(viewingOrder)} 
+                        className="px-5 py-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-xl font-bold text-xs flex items-center gap-2 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors shadow-sm"
+                    >
+                        <Printer size={16} /> Print
+                    </button>
+                    {viewingOrder.status === 'Delivered' && onRequestReturn && (
+                        <button 
+                            onClick={() => { setViewingOrder(null); onRequestReturn(viewingOrder.id); }} 
+                            className="px-5 py-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-xl font-bold text-xs flex items-center gap-2 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors shadow-sm"
+                        >
+                            <RotateCcw size={16} /> Return
+                        </button>
+                    )}
+                    <button 
+                        onClick={() => handleEditOrder(viewingOrder)} 
+                        className="px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold text-xs flex items-center gap-2 hover:bg-indigo-700 transition-colors shadow-md active:scale-95"
+                    >
+                        <Edit size={16} /> Edit Order
+                    </button>
+                 </div>
+              </div>
+           </div>
+        </div>
+      )}
 
       {/* POS Modal */}
       {isModalOpen && (
@@ -905,18 +1119,11 @@ export const Sales: React.FC<SalesProps> = ({
                       </div>
                     </div>
                     
-                    <div className="grid grid-cols-2 gap-4 pt-2">
-                      <select 
-                        className="p-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold outline-none cursor-pointer hover:border-indigo-500 transition-colors"
-                        value={newSale.status}
-                        onChange={e => setNewSale({...newSale, status: e.target.value as any})}
-                      >
-                        {ORDER_STATUSES.filter(s => s !== 'All').map(s => <option key={s} value={s}>{s}</option>)}
-                      </select>
+                    <div className="pt-2">
                       <button 
                         onClick={handleSubmit}
                         disabled={!newSale.customerId || !newSale.items?.length}
-                        className="bg-indigo-600 text-white rounded-xl font-bold text-sm shadow-xl hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95"
+                        className="w-full py-4 bg-indigo-600 text-white rounded-xl font-bold text-sm shadow-xl hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95"
                       >
                         {editingSaleId ? 'Update Order' : 'Confirm Order'}
                       </button>

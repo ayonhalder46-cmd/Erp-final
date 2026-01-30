@@ -1,8 +1,8 @@
 
 import React, { useState, useMemo } from 'react';
 import { Product, Sale, Customer, Supplier, ViewState, Expense, AuditLog, Return } from '../types';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, AreaChart, Area } from 'recharts';
-import { Users, ShoppingBag, Truck, TrendingUp, TrendingDown, Package, Wallet, Clock, Calendar, Activity, Sparkles, ArrowRight, ArrowUpRight, CheckCircle2, Trophy } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, AreaChart, Area, PieChart, Pie, Legend } from 'recharts';
+import { Users, ShoppingBag, Truck, TrendingUp, TrendingDown, Package, Wallet, Clock, Calendar, Activity, Sparkles, ArrowRight, ArrowUpRight, CheckCircle2, Trophy, AlertCircle, Ban, RotateCcw } from 'lucide-react';
 
 interface DashboardProps {
   products: Product[];
@@ -22,17 +22,23 @@ export const Dashboard: React.FC<DashboardProps> = ({ products, sales, customers
   // Financial Calculations - Filtered by Month
   const monthlySales = useMemo(() => sales.filter(s => s.date.startsWith(selectedMonth)), [sales, selectedMonth]);
   
-  // Confirmed and Delivered are considered completed/valid sales for revenue, matching GAS logic where 'Sales' sheet is populated on confirmation.
+  // Status-based Filtering
   const completedSales = useMemo(() => monthlySales.filter(s => s.status === 'Confirmed' || s.status === 'Delivered'), [monthlySales]);
+  const pendingSales = useMemo(() => monthlySales.filter(s => s.status === 'Pending'), [monthlySales]);
+  const cancelledSales = useMemo(() => monthlySales.filter(s => s.status === 'Cancelled'), [monthlySales]);
+  const returnedSales = useMemo(() => monthlySales.filter(s => s.status === 'Returned'), [monthlySales]);
   
   const monthlyExpenses = useMemo(() => expenses.filter(e => e.date.startsWith(selectedMonth) && e.status === 'Paid'), [expenses, selectedMonth]);
   const monthlyReturns = useMemo(() => returns.filter(r => r.date.startsWith(selectedMonth) && r.status === 'Approved'), [returns, selectedMonth]);
 
-  const grossRevenue = completedSales.reduce((acc, curr) => acc + curr.totalAmount, 0);
+  // Strictly separating Product Revenue from Delivery Charges
+  const totalDeliveryCollected = completedSales.reduce((acc, s) => acc + (s.deliveryCharge || 0), 0);
+  const grossProductRevenue = completedSales.reduce((acc, curr) => acc + (curr.totalAmount - (curr.deliveryCharge || 0)), 0);
+  
   const totalRefunds = monthlyReturns.reduce((acc, curr) => acc + curr.refundAmount, 0);
-  const netRevenue = grossRevenue - totalRefunds;
+  const netProductRevenue = grossProductRevenue - totalRefunds;
 
-  // Inventory Asset Calculation (Global Snapshot - always current)
+  // Inventory Asset Calculation (Global Snapshot)
   const totalInventoryValue = useMemo(() => {
     return products.reduce((acc, p) => {
       if (p.hasVariants && p.variants) {
@@ -63,6 +69,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ products, sales, customers
     return Object.values(counts).sort((a, b) => b.revenue - a.revenue).slice(0, 3);
   }, [completedSales, products]);
 
+  // Status Distribution Data
+  const statusData = useMemo(() => [
+    { name: 'Delivered', value: monthlySales.filter(s => s.status === 'Delivered').length, color: '#10b981' },
+    { name: 'Confirmed', value: monthlySales.filter(s => s.status === 'Confirmed').length, color: '#3b82f6' },
+    { name: 'Pending', value: pendingSales.length, color: '#f59e0b' },
+    { name: 'Returned', value: returnedSales.length, color: '#8b5cf6' },
+    { name: 'Cancelled', value: cancelledSales.length, color: '#ef4444' }
+  ].filter(d => d.value > 0), [monthlySales, pendingSales, returnedSales, cancelledSales]);
+
   // Chart Data Preparation (Last 6 Months Trend)
   const chartData = useMemo(() => {
     const months = [];
@@ -73,9 +88,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ products, sales, customers
     }
 
     return months.map(month => {
-      const monthRevenue = sales
-        .filter(s => s.date.startsWith(month) && (s.status === 'Confirmed' || s.status === 'Delivered'))
-        .reduce((sum, s) => sum + s.totalAmount, 0);
+      const monthCompletedSales = sales.filter(s => s.date.startsWith(month) && (s.status === 'Confirmed' || s.status === 'Delivered'));
+      
+      const monthProductRevenue = monthCompletedSales.reduce((sum, s) => sum + (s.totalAmount - (s.deliveryCharge || 0)), 0);
       
       const monthRefunds = returns
         .filter(r => r.date.startsWith(month) && r.status === 'Approved')
@@ -84,7 +99,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ products, sales, customers
       return {
         name: new Date(month + "-01").toLocaleDateString('en-US', { month: 'short' }),
         fullDate: month,
-        revenue: monthRevenue - monthRefunds
+        revenue: monthProductRevenue - monthRefunds
       };
     });
   }, [sales, returns]);
@@ -93,8 +108,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ products, sales, customers
 
   // --- SMART ONBOARDING / EMPTY STATE ---
   if (products.length === 0) {
+    // ... (Keep existing onboarding return)
     return (
       <div className="flex flex-col items-center justify-center min-h-[85vh] text-center space-y-10 animate-in fade-in zoom-in duration-500 pb-20">
+         {/* ... (Existing onboarding code) ... */}
          <div className="w-32 h-32 bg-indigo-50 dark:bg-indigo-500/10 rounded-[2.5rem] flex items-center justify-center text-indigo-600 dark:text-indigo-400 shadow-2xl shadow-indigo-500/20 mb-4 animate-bounce-subtle ring-4 ring-white dark:ring-slate-900">
             <Sparkles size={64} />
          </div>
@@ -104,7 +121,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ products, sales, customers
               Welcome to <strong>TheDécorHub ERP</strong>. Your workspace is ready. Follow the setup sequence to activate your business dashboard.
             </p>
          </div>
-         
          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-5xl px-4 mt-8">
             <button 
               onClick={() => onNavigate('suppliers')}
@@ -180,19 +196,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ products, sales, customers
           <div className="relative z-10">
             <div className="flex items-center gap-3 mb-4 text-indigo-400">
               <Wallet size={20} />
-              <h3 className="text-[10px] font-black uppercase tracking-widest">Net Revenue</h3>
+              <h3 className="text-[10px] font-black uppercase tracking-widest">Product Revenue (Net)</h3>
             </div>
             <div className="flex items-baseline gap-1">
               <span className="text-lg opacity-50 font-serif">৳</span>
-              <p className="text-4xl font-serif font-bold tracking-tighter">{netRevenue.toLocaleString()}</p>
+              <p className="text-4xl font-serif font-bold tracking-tighter">{netProductRevenue.toLocaleString()}</p>
             </div>
             <div className="mt-4 flex flex-col gap-1 text-xs">
               <div className="flex justify-between text-indigo-300/80">
-                 <span>Gross Sales:</span> <span>৳{grossRevenue.toLocaleString()}</span>
+                 <span>Gross Product Sales:</span> <span>৳{grossProductRevenue.toLocaleString()}</span>
               </div>
               {totalRefunds > 0 && (
                 <div className="flex justify-between text-red-400">
-                   <span>Refunds:</span> <span>-৳{totalRefunds.toLocaleString()}</span>
+                   <span>Returns:</span> <span>-৳{totalRefunds.toLocaleString()}</span>
                 </div>
               )}
             </div>
@@ -202,24 +218,40 @@ export const Dashboard: React.FC<DashboardProps> = ({ products, sales, customers
         <div className="bg-white dark:bg-slate-900/50 p-8 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm hover:border-indigo-500/30 transition-colors group">
           <div className="flex items-center gap-3 mb-4 text-emerald-600 dark:text-emerald-400">
             <ShoppingBag size={20} />
-            <h3 className="text-[10px] font-black uppercase tracking-widest">Orders</h3>
+            <h3 className="text-[10px] font-black uppercase tracking-widest">Completed Orders</h3>
           </div>
           <p className="text-4xl font-serif font-bold text-slate-900 dark:text-white tracking-tighter">{completedSales.length}</p>
-          <p className="text-xs text-slate-400 mt-4 font-medium flex items-center gap-1">
-             <Clock size={12} /> {monthlySales.length - completedSales.length} Pending Processing
-          </p>
+          <div className="mt-4 text-xs font-medium space-y-1">
+             <div className="flex items-center justify-between text-slate-500">
+                <span className="flex items-center gap-1"><CheckCircle2 size={12} className="text-blue-500"/> Confirmed</span>
+                <span>{monthlySales.filter(s => s.status === 'Confirmed').length}</span>
+             </div>
+             <div className="flex items-center justify-between text-slate-500">
+                <span className="flex items-center gap-1"><Truck size={12} className="text-emerald-500"/> Delivered</span>
+                <span>{monthlySales.filter(s => s.status === 'Delivered').length}</span>
+             </div>
+          </div>
         </div>
 
         <div className="bg-white dark:bg-slate-900/50 p-8 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm hover:border-indigo-500/30 transition-colors group">
           <div className="flex items-center gap-3 mb-4 text-amber-600 dark:text-amber-400">
-            <Package size={20} />
-            <h3 className="text-[10px] font-black uppercase tracking-widest">Inventory Asset</h3>
+            <Activity size={20} />
+            <h3 className="text-[10px] font-black uppercase tracking-widest">Order Action</h3>
           </div>
           <div className="flex items-baseline gap-1">
-            <span className="text-lg opacity-30 font-serif dark:text-white">৳</span>
-            <p className="text-3xl font-serif font-bold text-slate-900 dark:text-white tracking-tighter">{totalInventoryValue.toLocaleString()}</p>
+            <p className="text-4xl font-serif font-bold text-slate-900 dark:text-white tracking-tighter">{pendingSales.length}</p>
+            <span className="text-xs text-slate-400 font-bold uppercase">Pending</span>
           </div>
-          <p className="text-xs text-slate-400 mt-4 font-medium">Cost value of stock on hand</p>
+          <div className="mt-4 text-xs font-medium space-y-1">
+             <div className="flex items-center justify-between text-slate-500">
+                <span className="flex items-center gap-1"><RotateCcw size={12} className="text-purple-500"/> Returned</span>
+                <span>{returnedSales.length}</span>
+             </div>
+             <div className="flex items-center justify-between text-slate-500">
+                <span className="flex items-center gap-1"><Ban size={12} className="text-red-500"/> Cancelled</span>
+                <span>{cancelledSales.length}</span>
+             </div>
+          </div>
         </div>
 
         <div className="bg-white dark:bg-slate-900/50 p-8 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm hover:border-indigo-500/30 transition-colors group">
@@ -244,7 +276,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ products, sales, customers
         <div className="lg:col-span-2 bg-white dark:bg-slate-900/50 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 p-8 shadow-sm">
            <div className="flex justify-between items-center mb-8">
               <h3 className="font-bold text-lg text-slate-900 dark:text-white flex items-center gap-2">
-                 <TrendingUp size={20} className="text-indigo-500" /> Revenue Trajectory (Net)
+                 <TrendingUp size={20} className="text-indigo-500" /> Revenue Trajectory (Product Sales)
               </h3>
               <div className="flex items-center gap-2 text-xs font-bold text-slate-400">
                  <span className="w-2 h-2 rounded-full bg-indigo-500"></span> 6 Month Trend
@@ -281,7 +313,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ products, sales, customers
                        border: 'none', 
                        boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' 
                      }}
-                     formatter={(value: number) => [`৳${value.toLocaleString()}`, 'Net Revenue']}
+                     formatter={(value: number) => [`৳${value.toLocaleString()}`, 'Product Revenue']}
                    />
                    <Area type="monotone" dataKey="revenue" stroke="#7c3aed" strokeWidth={3} fillOpacity={1} fill="url(#colorRevenue)" />
                 </AreaChart>
@@ -289,35 +321,38 @@ export const Dashboard: React.FC<DashboardProps> = ({ products, sales, customers
            </div>
         </div>
 
-        {/* Top Movers & Feed */}
+        {/* Status Distribution Chart & Movers */}
         <div className="space-y-6">
-           {/* Top Movers */}
+           {/* Order Status Distribution */}
            <div className="bg-white dark:bg-slate-900/50 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 p-8 shadow-sm">
-              <h3 className="font-bold text-lg text-slate-900 dark:text-white flex items-center gap-2 mb-6">
-                 <Trophy size={20} className="text-amber-500" /> Top Movers
+              <h3 className="font-bold text-lg text-slate-900 dark:text-white flex items-center gap-2 mb-2">
+                 <Package size={20} className="text-blue-500" /> Order Statuses
               </h3>
-              <div className="space-y-4">
-                 {topProducts.length > 0 ? topProducts.map((item, idx) => (
-                   <div key={idx} className="flex items-center gap-4 group">
-                      <div className="w-12 h-12 bg-slate-100 dark:bg-slate-800 rounded-xl flex items-center justify-center shrink-0 border border-slate-200 dark:border-slate-700 overflow-hidden">
-                         {item.image ? (
-                           <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
-                         ) : (
-                           <Package size={20} className="text-slate-400"/>
-                         )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                         <p className="font-bold text-sm text-slate-800 dark:text-white truncate">{item.name}</p>
-                         <p className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
-                           {item.qty} units sold
-                         </p>
-                      </div>
-                      <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10 px-2 py-1 rounded-lg">
-                        ৳{item.revenue.toLocaleString()}
-                      </span>
-                   </div>
-                 )) : (
-                   <p className="text-center text-slate-400 text-xs italic py-4">No sales data for this period.</p>
+              <div className="h-[200px] w-full relative">
+                 <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                       <Pie 
+                         data={statusData} 
+                         dataKey="value" 
+                         nameKey="name" 
+                         cx="50%" 
+                         cy="50%" 
+                         innerRadius={50} 
+                         outerRadius={70} 
+                         paddingAngle={5}
+                       >
+                         {statusData.map((entry, index) => (
+                           <Cell key={`cell-${index}`} fill={entry.color} strokeWidth={0} />
+                         ))}
+                       </Pie>
+                       <Tooltip 
+                          contentStyle={{ backgroundColor: theme === 'dark' ? '#1e293b' : '#fff', borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
+                       />
+                       <Legend verticalAlign="middle" align="right" layout="vertical" iconType="circle" wrapperStyle={{ fontSize: '10px', fontWeight: 'bold' }} />
+                    </PieChart>
+                 </ResponsiveContainer>
+                 {statusData.length === 0 && (
+                   <div className="absolute inset-0 flex items-center justify-center text-xs text-slate-400">No orders this month</div>
                  )}
               </div>
            </div>
@@ -327,7 +362,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ products, sales, customers
               <h3 className="font-bold text-lg text-slate-900 dark:text-white flex items-center gap-2 mb-6">
                  <Activity size={20} className="text-indigo-500" /> Live Feed
               </h3>
-              <div className="flex-1 space-y-6 overflow-y-auto max-h-[300px] custom-scrollbar pr-2">
+              <div className="flex-1 space-y-6 overflow-y-auto max-h-[250px] custom-scrollbar pr-2">
                  {recentActivity.map((log) => (
                    <div key={log.id} className="flex gap-4 group relative">
                       <div className="absolute left-[3px] top-4 bottom-[-20px] w-[2px] bg-slate-100 dark:bg-slate-800 group-last:hidden"></div>

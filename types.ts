@@ -99,6 +99,7 @@ export interface Return {
   reason: 'Defective' | 'Wrong Item' | 'Changed Mind' | 'Other';
   condition: 'Resellable' | 'Damaged';
   status: 'Pending' | 'Approved' | 'Rejected';
+  isDeliveryRefused?: boolean; // New flag to track logic
   date: string;
 }
 

@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Product, ProductVariant, Supplier } from '../types';
-import { Plus, Edit2, Trash2, Search, X, Undo2, Redo2, Layers, Package, ImageIcon, Upload, Image as ImageIconLucide, ChevronLeft, ChevronRight, Filter, ChevronDown, AlertCircle, AlertTriangle, BadgeDollarSign, BarChart2 } from 'lucide-react';
+import { Plus, Edit2, Trash2, Search, X, Undo2, Redo2, Layers, Package, ImageIcon, Upload, Image as ImageIconLucide, ChevronLeft, ChevronRight, Filter, ChevronDown, AlertCircle, AlertTriangle, BadgeDollarSign, BarChart2, Palette, Ruler } from 'lucide-react';
 
 interface InventoryProps {
   products: Product[];
@@ -27,6 +27,17 @@ const CATEGORIES = [
   'Accessories'
 ];
 
+const CATEGORY_PREFIXES: Record<string, string> = {
+  'Furniture': 'FUR',
+  'Lighting': 'LGT',
+  'Textiles': 'TEX',
+  'Showpiece': 'SHW',
+  'Wall Decor': 'WLD',
+  'Kitchenware': 'KIT',
+  'Garden': 'GDN',
+  'Accessories': 'ACC'
+};
+
 export const Inventory: React.FC<InventoryProps> = ({ 
   products, suppliers, onAddProduct, onUpdateProduct, onDeleteProduct,
   canUndo, canRedo, onUndo, onRedo, notify
@@ -39,6 +50,9 @@ export const Inventory: React.FC<InventoryProps> = ({
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // New State for Variant Type Toggle
+  const [variantType, setVariantType] = useState<'Color' | 'Size'>('Color');
 
   useEffect(() => {
     const handleResize = () => {
@@ -94,16 +108,56 @@ export const Inventory: React.FC<InventoryProps> = ({
     setCurrentPage(1);
   }, [searchTerm, selectedCategory]);
 
+  const generateSKU = (category: string) => {
+    const prefix = CATEGORY_PREFIXES[category] || 'GEN';
+    // Calculate next sequence number based on existing products in this category
+    const count = products.filter(p => p.category === category).length + 1;
+    return `${prefix}-${String(count).padStart(3, '0')}`;
+  };
+
   const handleOpenModal = (product?: Product) => {
     setErrorMsg(null);
     if (product) {
       setEditingId(product.id);
       setFormData({ ...product });
+      // Infer variant type from first variant if possible, mostly for UI consistency
+      if (product.variants && product.variants.length > 0) {
+         // Simple heuristic: if name contains XS, S, M, L, XL -> Size, else Color
+         const firstVarName = product.variants[0].name.toUpperCase();
+         if (['XS','S','M','L','XL','XXL'].some(s => firstVarName.includes(s))) {
+             setVariantType('Size');
+         } else {
+             setVariantType('Color');
+         }
+      }
     } else {
       setEditingId(null);
-      setFormData({ sku: '', name: '', category: 'Furniture', costPrice: 0, sellingPrice: 0, stockLevel: 0, minStockLevel: 5, hasVariants: false, variants: [], image: '', supplierId: '' });
+      const defaultCat = 'Furniture';
+      setFormData({ 
+          sku: generateSKU(defaultCat), 
+          name: '', 
+          category: defaultCat, 
+          costPrice: 0, 
+          sellingPrice: 0, 
+          stockLevel: 0, 
+          minStockLevel: 5, 
+          hasVariants: false, 
+          variants: [], 
+          image: '', 
+          supplierId: '' 
+      });
     }
     setIsModalOpen(true);
+  };
+
+  const handleCategoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newCat = e.target.value;
+    if (!editingId) {
+        // Auto-generate SKU only for new products
+        setFormData(prev => ({ ...prev, category: newCat, sku: generateSKU(newCat) }));
+    } else {
+        setFormData(prev => ({ ...prev, category: newCat }));
+    }
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -124,12 +178,16 @@ export const Inventory: React.FC<InventoryProps> = ({
   };
 
   const handleAddVariant = () => {
+    const nextIndex = (formData.variants?.length || 0) + 1;
+    // Auto-generate Variant SKU based on Parent SKU
+    const variantSku = `${formData.sku}-${String(nextIndex).padStart(2, '0')}`;
+    
     const newVariant: ProductVariant = {
       id: Date.now().toString(),
-      sku: `${formData.sku || 'SKU'}-${(formData.variants?.length || 0) + 1}`,
+      sku: variantSku,
       name: '',
-      costPrice: formData.costPrice || 0,
-      sellingPrice: formData.sellingPrice || 0,
+      costPrice: formData.costPrice || 0, // Inherit cost
+      sellingPrice: formData.sellingPrice || 0, // Inherit price
       stockLevel: 0,
       minStockLevel: 5
     };
@@ -418,7 +476,7 @@ export const Inventory: React.FC<InventoryProps> = ({
                     <div>
                       <label className="block text-[10px] font-black uppercase text-slate-500 dark:text-slate-400 tracking-widest mb-2 ml-1">Primary Category</label>
                       <div className="relative">
-                        <select className="w-full p-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl outline-none dark:text-white transition-all appearance-none shadow-inner" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}>
+                        <select className="w-full p-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl outline-none dark:text-white transition-all appearance-none shadow-inner" value={formData.category} onChange={handleCategoryChange}>
                           {CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
                         </select>
                         <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none opacity-60"><Package size={16}/></div>
@@ -512,20 +570,40 @@ export const Inventory: React.FC<InventoryProps> = ({
 
               {formData.hasVariants && (
                 <div className="space-y-6 animate-in slide-in-from-top-4 duration-500">
-                  <div className="flex justify-between items-center px-2">
+                  <div className="flex flex-col md:flex-row justify-between items-start md:items-center px-2 gap-4">
                     <div className="flex items-center gap-3">
                       <Layers className="text-indigo-600" size={20} />
                       <h3 className="text-xl font-serif font-bold text-slate-800 dark:text-white">Product Variants</h3>
                     </div>
+                    
+                    {/* Variant Type Toggle */}
+                    <div className="flex p-1 bg-slate-100 dark:bg-slate-800 rounded-xl">
+                        <button
+                          type="button"
+                          onClick={() => setVariantType('Color')}
+                          className={`px-4 py-2 text-xs font-bold rounded-lg transition-all flex items-center gap-2 ${variantType === 'Color' ? 'bg-white dark:bg-slate-700 shadow text-indigo-600 dark:text-white' : 'text-slate-500'}`}
+                        >
+                          <Palette size={14} /> Color
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setVariantType('Size')}
+                          className={`px-4 py-2 text-xs font-bold rounded-lg transition-all flex items-center gap-2 ${variantType === 'Size' ? 'bg-white dark:bg-slate-700 shadow text-indigo-600 dark:text-white' : 'text-slate-500'}`}
+                        >
+                          <Ruler size={14} /> Size
+                        </button>
+                    </div>
+
                     <button type="button" onClick={handleAddVariant} className="bg-indigo-600 text-white px-5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-500/20 active:scale-95">
                       <Plus size={14} /> Add Variant
                     </button>
                   </div>
+                  
                   <div className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-[2rem] overflow-hidden shadow-inner">
                     <table className="w-full text-left text-xs">
                       <thead>
                         <tr className="bg-slate-100 dark:bg-slate-900/50 text-slate-600 dark:text-slate-400 font-black uppercase tracking-widest">
-                          <th className="px-6 py-4">Option Details</th>
+                          <th className="px-6 py-4">{variantType} Name</th>
                           <th className="px-6 py-4">Custom SKU</th>
                           <th className="px-6 py-4 w-24">Cost (৳)</th>
                           <th className="px-6 py-4 w-28">Price (৳)</th>
@@ -538,7 +616,7 @@ export const Inventory: React.FC<InventoryProps> = ({
                         {formData.variants?.map((v, idx) => (
                           <tr key={v.id} className="bg-white dark:bg-slate-800 transition-colors">
                             <td className="px-6 py-3">
-                              <input required placeholder="e.g. Ivory Silk / Large" className="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-transparent focus:border-indigo-300 outline-none dark:text-white text-xs font-medium" value={v.name} onChange={e => handleUpdateVariant(idx, 'name', e.target.value)} />
+                              <input required placeholder={`e.g. ${variantType === 'Color' ? 'Royal Blue' : 'Extra Large'}`} className="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-transparent focus:border-indigo-300 outline-none dark:text-white text-xs font-medium" value={v.name} onChange={e => handleUpdateVariant(idx, 'name', e.target.value)} />
                             </td>
                             <td className="px-6 py-3">
                               <input required className="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-transparent focus:border-indigo-300 outline-none font-mono dark:text-white text-[10px]" value={v.sku} onChange={e => handleUpdateVariant(idx, 'sku', e.target.value)} />

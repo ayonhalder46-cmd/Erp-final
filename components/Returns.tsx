@@ -9,9 +9,10 @@ interface ReturnsProps {
   onAdd: (r: Return) => void;
   onUpdateStatus: (r: Return, status: Return['status']) => void;
   onAddExpense: (e: Expense) => void;
+  preSelectedOrderId?: string | null;
 }
 
-export const Returns: React.FC<ReturnsProps> = ({ returns, sales, onAdd, onUpdateStatus, onAddExpense }) => {
+export const Returns: React.FC<ReturnsProps> = ({ returns, sales, onAdd, onUpdateStatus, onAddExpense, preSelectedOrderId }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
@@ -31,7 +32,22 @@ export const Returns: React.FC<ReturnsProps> = ({ returns, sales, onAdd, onUpdat
     unitCost: 0
   });
 
+  // Automatically open modal if a pre-selected order ID is passed
+  useEffect(() => {
+    if (preSelectedOrderId) {
+      setSelectedOrderId(preSelectedOrderId);
+      setIsModalOpen(true);
+    }
+  }, [preSelectedOrderId]);
+
   const selectedSale = sales.find(s => s.id === selectedOrderId);
+
+  // Eligible Orders for Return: Only Delivered orders. Sorted Newest First.
+  const eligibleOrders = useMemo(() => {
+    return sales
+      .filter(s => s.status === 'Delivered')
+      .sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [sales]);
 
   // Stats Logic
   const stats = useMemo(() => {
@@ -73,6 +89,7 @@ export const Returns: React.FC<ReturnsProps> = ({ returns, sales, onAdd, onUpdat
             reason: formData.reason as any,
             condition: formData.condition as any,
             status: formData.status as any,
+            isDeliveryRefused: customerRefusedDelivery,
             date: new Date().toISOString()
         };
         onAdd(newReturn);
@@ -88,33 +105,16 @@ export const Returns: React.FC<ReturnsProps> = ({ returns, sales, onAdd, onUpdat
                 variantId: item.variantId,
                 quantity: item.quantity,
                 unitCost: item.unitCost,
-                // Default to item total. The global 'refundAmount' input isn't used for batch unless we split it, 
-                // but for simplicity in full return, we default to item value (Customer pays delivery).
+                // Default to item total.
                 refundAmount: item.total, 
                 reason: formData.reason as any,
                 condition: formData.condition as any,
                 status: formData.status as any,
+                isDeliveryRefused: customerRefusedDelivery,
                 date: new Date().toISOString()
             };
             onAdd(newReturn);
         });
-    }
-
-    // --- LOSS LOGIC: The "Refusal" Exception ---
-    // If customer refused to pay delivery (e.g. COD Refusal), we log the delivery charge as a LOSS (Expense).
-    // This separates the "Refund" (Money back to customer) from the "Loss" (Money paid to courier but not collected).
-    if (customerRefusedDelivery && selectedSale.deliveryCharge > 0) {
-        const expense: Expense = {
-            id: `EXP-LOSS-${Date.now()}`,
-            date: new Date().toISOString(),
-            category: 'Logistics',
-            description: `Delivery Loss - Customer Refused - Order #${selectedSale.id.slice(-6)}`,
-            amount: selectedSale.deliveryCharge,
-            paymentMethod: 'System Record',
-            status: 'Paid',
-            referenceId: selectedSale.id
-        };
-        onAddExpense(expense);
     }
 
     setIsModalOpen(false);
@@ -248,6 +248,7 @@ export const Returns: React.FC<ReturnsProps> = ({ returns, sales, onAdd, onUpdat
                      </td>
                      <td className="px-8 py-5 text-xs text-slate-600 dark:text-slate-400">
                         <span className="font-bold">{r.reason}</span> <span className="text-[10px] opacity-60 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded ml-1">{r.condition}</span>
+                        {r.isDeliveryRefused && <span className="text-[10px] text-red-500 font-bold ml-1 block">Delivery Refused</span>}
                      </td>
                      <td className="px-8 py-5">
                         <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border flex items-center gap-1.5 w-fit ${getStatusStyle(r.status)}`}>
@@ -261,7 +262,7 @@ export const Returns: React.FC<ReturnsProps> = ({ returns, sales, onAdd, onUpdat
                      <td className="px-8 py-5 text-right">
                         {r.status === 'Pending' && (
                           <div className="flex items-center justify-end gap-2">
-                             <button onClick={() => onUpdateStatus(r, 'Approved')} className="p-2 bg-green-50 text-green-600 rounded-lg hover:bg-green-100 dark:bg-green-500/10 dark:text-green-400 dark:hover:bg-green-500/20 transition-colors border border-transparent hover:border-green-200" title="Approve & Restock">
+                             <button onClick={() => onUpdateStatus(r, 'Approved')} className="p-2 bg-green-50 text-green-600 rounded-lg hover:bg-green-100 dark:bg-green-500/10 dark:text-green-400 dark:hover:bg-green-500/20 transition-colors border border-transparent hover:border-green-200" title="Approve & Process">
                                <CheckCircle2 size={16} />
                              </button>
                              <button onClick={() => onUpdateStatus(r, 'Rejected')} className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 dark:bg-red-500/10 dark:text-red-400 dark:hover:bg-red-500/20 transition-colors border border-transparent hover:border-red-200" title="Reject">
@@ -295,13 +296,21 @@ export const Returns: React.FC<ReturnsProps> = ({ returns, sales, onAdd, onUpdat
               </div>
               <form onSubmit={handleSubmit} className="space-y-6">
                  <div>
-                    <label className="block text-[10px] uppercase font-black text-slate-400 tracking-widest mb-1.5 ml-1">Order Reference</label>
-                    <select required className="w-full p-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/10 dark:text-white font-bold transition-all text-sm appearance-none" value={selectedOrderId} onChange={e => { setSelectedOrderId(e.target.value); setReturnType('single'); }}>
-                       <option value="">Select Order...</option>
-                       {sales.filter(s => s.status === 'Confirmed' || s.status === 'Delivered').map(s => (
-                         <option key={s.id} value={s.id}>Order #{s.id.slice(-6)} - {s.customerName} ({s.status})</option>
-                       ))}
-                    </select>
+                    <label className="block text-[10px] uppercase font-black text-slate-400 tracking-widest mb-1.5 ml-1">Order Reference (Delivered Only)</label>
+                    <div className="relative">
+                      <select required className="w-full p-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/10 dark:text-white font-bold transition-all text-sm appearance-none cursor-pointer" value={selectedOrderId} onChange={e => { setSelectedOrderId(e.target.value); setReturnType('single'); }}>
+                        <option value="">Select Delivered Order...</option>
+                        {eligibleOrders.map(s => (
+                          <option key={s.id} value={s.id}>
+                            #{s.id.slice(-6)} — {s.date} — {s.customerName}
+                          </option>
+                        ))}
+                      </select>
+                      <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none opacity-50">
+                        <Truck size={16} />
+                      </div>
+                    </div>
+                    {eligibleOrders.length === 0 && <p className="text-[10px] text-amber-500 mt-2 ml-1">No delivered orders available to return.</p>}
                  </div>
                  
                  {selectedSale && (
@@ -353,7 +362,7 @@ export const Returns: React.FC<ReturnsProps> = ({ returns, sales, onAdd, onUpdat
                                 <div className="space-y-2">
                                     <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400 font-bold bg-slate-100 dark:bg-slate-800 p-2 rounded-lg text-xs">
                                         <Truck size={12} />
-                                        Delivery Charge: ৳{selectedSale.deliveryCharge} (Non-Refundable Policy)
+                                        Delivery Charge: ৳{selectedSale.deliveryCharge}
                                     </div>
                                     
                                     {/* Refusal Loss Toggle */}
@@ -372,7 +381,7 @@ export const Returns: React.FC<ReturnsProps> = ({ returns, sales, onAdd, onUpdat
                                             </label>
                                             {customerRefusedDelivery && (
                                                 <p className="text-[10px] text-red-500 dark:text-red-400 mt-1 font-bold animate-in slide-in-from-top-1">
-                                                    Logic: Logs ৳{selectedSale.deliveryCharge} as Expense (Loss).
+                                                    Logic: Logs ৳{selectedSale.deliveryCharge} as Expense (Loss). Order kept as 'Returned'.
                                                 </p>
                                             )}
                                         </div>
