@@ -9,7 +9,7 @@ interface PurchaseOrdersProps {
   suppliers: Supplier[];
   onCreatePO: (po: PurchaseOrder) => void;
   onReceivePO: (po: PurchaseOrder) => void;
-  companyProfile?: { name: string; address: string; phone: string; email: string };
+  companyProfile?: { name: string; address: string; phone: string; email: string; logo?: string };
 }
 
 export const PurchaseOrders: React.FC<PurchaseOrdersProps> = ({ purchaseOrders, products, suppliers, onCreatePO, onReceivePO, companyProfile }) => {
@@ -124,6 +124,8 @@ export const PurchaseOrders: React.FC<PurchaseOrdersProps> = ({ purchaseOrders, 
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
 
+    const logoHtml = companyProfile?.logo ? `<img src="${companyProfile.logo}" style="max-height: 50px; margin-bottom: 10px;" alt="Logo"/>` : '';
+
     const html = `
       <html>
         <head>
@@ -145,6 +147,7 @@ export const PurchaseOrders: React.FC<PurchaseOrdersProps> = ({ purchaseOrders, 
         <body>
           <div class="header">
             <div class="title">
+              ${logoHtml}
               <h1>Purchase Order</h1>
               <p style="margin: 5px 0 0; font-size: 14px;">${companyProfile?.name || 'TheDécorHub'}</p>
             </div>

@@ -75,6 +75,7 @@ function App() {
     address: 'Dhaka, Bangladesh',
     phone: '+880',
     email: 'admin@decorhub.com',
+    logo: '', // Base64 Logo String
     footerMessage: 'Thank you for your business.',
     terms: 'Goods sold are subject to return policy within 7 days.'
   });
@@ -802,7 +803,7 @@ function App() {
 
       <main className="flex-1 overflow-y-auto overflow-x-hidden relative scroll-smooth pt-16 md:pt-0">
         <div className="min-h-full p-4 md:p-8 lg:p-12 pb-32">
-          {currentView === 'dashboard' && <Dashboard products={products} sales={sales} customers={customers} suppliers={suppliers} expenses={expenses} returns={returns} logs={logs} onNavigate={setCurrentView} theme={theme} />}
+          {currentView === 'dashboard' && <Dashboard products={products} sales={sales} customers={customers} suppliers={suppliers} expenses={expenses} returns={returns} logs={logs} onNavigate={setCurrentView} theme={theme} businessProfile={businessProfile} isSecurityConfigured={pin !== '1234'} />}
           {currentView === 'spreadsheet' && <SpreadsheetView products={products} sales={sales} customers={customers} suppliers={suppliers} expenses={expenses} onUpdateProduct={handleUpdateProduct} />}
           {currentView === 'inventory' && <Inventory products={products} suppliers={suppliers} onAddProduct={handleAddProduct} onUpdateProduct={handleUpdateProduct} onDeleteProduct={handleDeleteProduct} canUndo={false} canRedo={false} onUndo={() => {}} onRedo={() => {}} notify={showToast} />}
           {currentView === 'procurement' && <PurchaseOrders purchaseOrders={purchaseOrders} products={products} suppliers={suppliers} onCreatePO={handleCreatePO} onReceivePO={handleReceivePO} companyProfile={businessProfile} />}

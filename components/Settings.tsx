@@ -20,7 +20,8 @@ import {
   Monitor,
   Upload,
   Receipt,
-  FileText
+  FileText,
+  Image as ImageIcon
 } from 'lucide-react';
 
 interface SettingsProps {
@@ -31,7 +32,7 @@ interface SettingsProps {
   expenses: Expense[];
   returns: Return[];
   onFactoryReset: () => void;
-  businessProfile: { name: string; address: string; phone: string; email: string; footerMessage?: string; terms?: string };
+  businessProfile: { name: string; address: string; phone: string; email: string; logo?: string; footerMessage?: string; terms?: string };
   onUpdateProfile: (p: any) => void;
   onUpdatePin: (pin: string) => void;
 }
@@ -128,6 +129,21 @@ export const Settings: React.FC<SettingsProps> = ({
       }
     };
     reader.readAsText(file);
+  };
+
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 500 * 1024) {
+        alert("Logo file too large. Max 500KB.");
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setProfileForm({ ...profileForm, logo: reader.result as string });
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const handleFactoryReset = async () => {
@@ -249,10 +265,24 @@ export const Settings: React.FC<SettingsProps> = ({
            </div>
            
            <div className="space-y-4">
-              <div>
-                 <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1.5 ml-1">Company Name</label>
-                 <input className="w-full p-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white font-bold text-sm transition-all" value={profileForm.name} onChange={e => setProfileForm({...profileForm, name: e.target.value})} />
+              <div className="flex items-center gap-6">
+                 <div className="relative group w-24 h-24 bg-slate-50 dark:bg-slate-800 rounded-2xl flex items-center justify-center border-2 border-dashed border-slate-200 dark:border-slate-700 overflow-hidden shrink-0">
+                    {profileForm.logo ? (
+                       <img src={profileForm.logo} alt="Logo" className="w-full h-full object-contain" />
+                    ) : (
+                       <div className="text-center p-2">
+                          <ImageIcon size={20} className="mx-auto text-slate-400 mb-1" />
+                          <span className="text-[8px] font-bold text-slate-400 uppercase">Add Logo</span>
+                       </div>
+                    )}
+                    <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handleLogoUpload} />
+                 </div>
+                 <div className="flex-1">
+                    <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1.5 ml-1">Company Name</label>
+                    <input className="w-full p-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white font-bold text-sm transition-all" value={profileForm.name} onChange={e => setProfileForm({...profileForm, name: e.target.value})} />
+                 </div>
               </div>
+              
               <div className="grid grid-cols-2 gap-4">
                  <div>
                     <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1.5 ml-1">Phone</label>

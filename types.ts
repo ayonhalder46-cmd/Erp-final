@@ -70,7 +70,7 @@ export interface Sale {
   totalCost: number;
   profit: number;
   notes?: string;
-  // Strict alignment with Google Sheets "STATUS_OPTIONS"
+  paymentMethod: 'Cash' | 'Card' | 'Mobile Money' | 'Bank Transfer' | 'Other'; // Added Payment Method
   status: 'Pending' | 'Confirmed' | 'Delivered' | 'Returned' | 'Cancelled';
   isDelivered?: boolean; // Deprecated, kept for backward compat
 }

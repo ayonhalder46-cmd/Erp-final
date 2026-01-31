@@ -330,8 +330,12 @@ export const Inventory: React.FC<InventoryProps> = ({
                 const minCost = product.hasVariants ? Math.min(...(product.variants?.map(v => v.costPrice) || [0])) : product.costPrice;
                 const maxCost = product.hasVariants ? Math.max(...(product.variants?.map(v => v.costPrice) || [0])) : product.costPrice;
                 
+                const rowClass = isLowStock 
+                  ? "hover:bg-red-50/50 dark:hover:bg-red-900/10 border-l-4 border-l-red-500 transition-colors group animate-in fade-in duration-300" 
+                  : "hover:bg-slate-50/80 dark:hover:bg-slate-800 transition-colors group animate-in fade-in duration-300 border-l-4 border-l-transparent";
+
                 return (
-                  <tr key={product.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800 transition-colors group animate-in fade-in duration-300">
+                  <tr key={product.id} className={rowClass}>
                     <td className="px-8 py-6 relative">
                       <div className="flex items-center gap-4">
                         <div className="relative group/image-trigger">

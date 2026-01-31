@@ -1,12 +1,12 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Sale, Product, Customer, SaleItem, ProductVariant } from './types';
+import { Sale, Product, Customer, SaleItem, ProductVariant } from '../types';
 import html2pdf from 'html2pdf.js';
 import { 
   Plus, Trash2, X, Undo2, Redo2, 
   Search, ShoppingCart, Package, ArrowRight, Layers, 
   Minus, ShoppingBag, Tag, AlertTriangle, Hash, User,
-  Filter, Eye, CheckCircle2, Clock, Ban, ChevronLeft, ChevronRight, Truck, Calendar, Printer, RefreshCw, MapPin, ChevronDown, Award, Wallet, RotateCcw, Edit, CreditCard, DollarSign, Phone, Check, Download
+  Filter, Eye, CheckCircle2, Clock, Ban, ChevronLeft, ChevronRight, Truck, Calendar, Printer, RefreshCw, MapPin, ChevronDown, Award, Wallet, RotateCcw, Edit, CreditCard, DollarSign, Phone, Check, Download, ScanBarcode
 } from 'lucide-react';
 
 interface SalesProps {
@@ -23,7 +23,7 @@ interface SalesProps {
   canUndo: boolean;
   canRedo: boolean;
   isDirty: boolean;
-  companyProfile: { name: string; address: string; phone: string; email: string; footerMessage?: string; terms?: string };
+  companyProfile: { name: string; address: string; phone: string; email: string; logo?: string; footerMessage?: string; terms?: string };
   notify?: (msg: string, type: 'success' | 'error' | 'info') => void;
   onRequestReturn?: (saleId: string) => void;
 }
@@ -158,6 +158,9 @@ export const Sales: React.FC<SalesProps> = ({
   const [isCustomerDropdownOpen, setIsCustomerDropdownOpen] = useState(false);
   const [mobileTab, setMobileTab] = useState<'catalog' | 'cart'>('catalog');
   
+  // POS Cash Management
+  const [amountTendered, setAmountTendered] = useState<number>(0);
+  
   const customerDropdownRef = useRef<HTMLDivElement>(null);
 
   const formatDate = (isoDate: string) => {
@@ -237,6 +240,41 @@ export const Sales: React.FC<SalesProps> = ({
   }, [filteredSales, currentPage]);
 
   const totalPages = Math.ceil(filteredSales.length / itemsPerPage);
+
+  // --- BARCODE SCANNING LOGIC ---
+  const handleProductSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && productSearch.trim()) {
+      e.preventDefault();
+      // Try to find exact SKU match first (common for barcodes)
+      const exactMatch = products.find(p => 
+        p.sku.toLowerCase() === productSearch.toLowerCase() ||
+        p.name.toLowerCase() === productSearch.toLowerCase() ||
+        (p.hasVariants && p.variants?.some(v => v.sku.toLowerCase() === productSearch.toLowerCase()))
+      );
+
+      if (exactMatch) {
+        if (exactMatch.hasVariants) {
+           // If variant SKU matched, add that specific variant
+           const matchedVariant = exactMatch.variants?.find(v => v.sku.toLowerCase() === productSearch.toLowerCase());
+           if (matchedVariant) {
+             addItemToSale(exactMatch, matchedVariant);
+             if (notify) notify(`Added ${exactMatch.name} (${matchedVariant.name}) to cart`, 'success');
+           } else {
+             // If product matched but it has variants, we can't auto-add without variant selection unless logic changes.
+             // For now, let's just clear search to reset. In a real scanner scenario, unique SKUs for variants are key.
+             if(notify) notify('Please select a variant for this product.', 'info');
+             return; 
+           }
+        } else {
+           addItemToSale(exactMatch);
+           if (notify) notify(`Added ${exactMatch.name} to cart`, 'success');
+        }
+        setProductSearch(''); // Clear for next scan
+      } else {
+        if(notify) notify('No product found with that SKU/Name', 'error');
+      }
+    }
+  };
 
   const handleQuickAddCustomer = (e: React.FormEvent) => {
     e.preventDefault();
@@ -369,6 +407,7 @@ export const Sales: React.FC<SalesProps> = ({
     setCustomerSearch('');
     setEditingSaleId(null);
     setMobileTab('catalog');
+    setAmountTendered(0);
   };
 
   const handleEditOrder = (sale: Sale) => {
@@ -415,6 +454,8 @@ export const Sales: React.FC<SalesProps> = ({
 
   const generateInvoiceHTML = (order: Sale) => {
     const customer = customers.find(c => c.id === order.customerId);
+    const logoHtml = companyProfile.logo ? `<img src="${companyProfile.logo}" style="max-height: 60px; margin-bottom: 10px;" alt="Logo"/>` : '';
+    
     return `
       <html>
         <head>
@@ -448,7 +489,8 @@ export const Sales: React.FC<SalesProps> = ({
           <div class="invoice-box">
             <div class="header-container">
               <div class="company-info">
-                <h1>${companyProfile.name}</h1>
+                ${logoHtml}
+                ${!companyProfile.logo ? `<h1>${companyProfile.name}</h1>` : `<h1>${companyProfile.name}</h1>`}
                 <p>${companyProfile.address}</p>
                 <p>${companyProfile.phone} | ${companyProfile.email}</p>
               </div>
@@ -1006,11 +1048,14 @@ export const Sales: React.FC<SalesProps> = ({
                       <div className="relative">
                           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                           <input 
-                            className="pl-9 pr-4 py-3 bg-slate-100 dark:bg-slate-800 rounded-xl text-sm w-full md:w-64 outline-none border border-transparent focus:border-indigo-500 transition-all" 
-                            placeholder="Search products..."
+                            className="pl-9 pr-4 py-3 bg-slate-100 dark:bg-slate-800 rounded-xl text-sm w-full md:w-64 outline-none border border-transparent focus:border-indigo-500 transition-all placeholder:text-xs" 
+                            placeholder="Scan Barcode or Search SKU..."
                             value={productSearch}
                             onChange={e => setProductSearch(e.target.value)}
+                            onKeyDown={handleProductSearchKeyDown}
+                            autoFocus
                           />
+                          <ScanBarcode className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 opacity-50" size={16}/>
                       </div>
                     </div>
                     
@@ -1203,6 +1248,27 @@ export const Sales: React.FC<SalesProps> = ({
                           {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
                         </select>
                       </div>
+
+                      {/* Cash Tendered Logic */}
+                      {newSale.paymentMethod === 'Cash' && (
+                        <div className="bg-slate-100 dark:bg-slate-800 p-3 rounded-xl space-y-2 animate-in fade-in">
+                          <div className="flex justify-between items-center">
+                            <span className="text-xs font-bold text-slate-500">Amount Tendered</span>
+                            <input 
+                              type="number" 
+                              className="w-24 text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-indigo-500 font-bold"
+                              value={amountTendered}
+                              onChange={e => setAmountTendered(Number(e.target.value))}
+                            />
+                          </div>
+                          <div className="flex justify-between items-center border-t border-slate-200 dark:border-slate-700 pt-2">
+                            <span className="text-xs font-bold text-slate-500">Change Due</span>
+                            <span className={`font-mono font-bold text-sm ${amountTendered - currentTotal >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                              ৳{Math.max(0, amountTendered - currentTotal).toLocaleString()}
+                            </span>
+                          </div>
+                        </div>
+                      )}
 
                       <div className="flex justify-between font-black text-2xl text-slate-900 dark:text-white pt-4 border-t border-slate-200 dark:border-slate-800">
                         <span>Total</span>

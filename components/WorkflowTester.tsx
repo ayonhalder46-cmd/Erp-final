@@ -216,7 +216,8 @@ export const WorkflowTester: React.FC<WorkflowTesterProps> = (props) => {
     const sale: Sale = {
       id: saleId, date: new Date().toISOString(), customerId, customerName: `Test Customer ${tid}`,
       items: [{ productId: productId!, productName: 'Test', variantId, quantity: 5, unitPrice: 1000, unitCost: 416.67, total: 5000 }],
-      discountAmount: 0, deliveryCharge: 0, totalAmount: 5000, totalCost: 2083.35, profit: 2916.65, status: 'Pending'
+      discountAmount: 0, deliveryCharge: 0, totalAmount: 5000, totalCost: 2083.35, profit: 2916.65, status: 'Pending',
+      paymentMethod: 'Cash'
     };
     props.onAddSale(sale);
     
@@ -274,7 +275,8 @@ export const WorkflowTester: React.FC<WorkflowTesterProps> = (props) => {
     const delSale: Sale = {
       id: delSaleId, date: new Date().toISOString(), customerId: customerId!, customerName: `Test Customer ${tid}`,
       items: [{ productId: productId!, productName: 'Test', variantId, quantity: 1, unitPrice: 1000, unitCost: 416.67, total: 1000 }],
-      discountAmount: 0, deliveryCharge: 150, totalAmount: 1150, totalCost: 416.67, profit: 733.33, status: 'Confirmed'
+      discountAmount: 0, deliveryCharge: 150, totalAmount: 1150, totalCost: 416.67, profit: 733.33, status: 'Confirmed',
+      paymentMethod: 'Cash'
     };
     props.onAddSale(delSale);
     await wait(500);

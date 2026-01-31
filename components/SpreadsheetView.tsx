@@ -281,6 +281,14 @@ export const SpreadsheetView: React.FC<SpreadsheetViewProps> = ({
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
+              {/* Excel-like letter headers */}
+              <tr className="bg-slate-100 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
+                {headers.map((_, i) => (
+                  <th key={`col-${i}`} className="px-4 py-1 text-[9px] font-mono text-center text-slate-400 border-r border-slate-200 dark:border-slate-700">
+                    {String.fromCharCode(65 + i)}
+                  </th>
+                ))}
+              </tr>
               <tr className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
                 {headers.map((h, i) => (
                   <th key={i} className="px-4 py-3 text-[10px] font-black uppercase text-slate-500 tracking-widest border-r border-slate-200 dark:border-slate-700 last:border-0 whitespace-nowrap bg-slate-100 dark:bg-slate-800/80">
@@ -336,7 +344,7 @@ export const SpreadsheetView: React.FC<SpreadsheetViewProps> = ({
             onClick={downloadCSV}
             className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 text-white rounded-lg font-bold text-sm shadow-md hover:bg-indigo-700 transition-colors"
           >
-            <Download size={16} /> Export CSV
+            <Download size={16} /> Export Master Sheet
           </button>
         </div>
       </div>

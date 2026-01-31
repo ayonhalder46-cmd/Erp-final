@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { Product, Sale, Customer, Supplier, ViewState, Expense, AuditLog, Return } from '../types';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, AreaChart, Area, PieChart, Pie, Legend } from 'recharts';
-import { Users, ShoppingBag, Truck, TrendingUp, TrendingDown, Package, Wallet, Clock, Calendar, Activity, Sparkles, ArrowRight, ArrowUpRight, CheckCircle2, Trophy, AlertCircle, Ban, RotateCcw } from 'lucide-react';
+import { Users, ShoppingBag, Truck, TrendingUp, TrendingDown, Package, Wallet, Clock, Calendar, Activity, Sparkles, ArrowRight, ArrowUpRight, CheckCircle2, Trophy, AlertCircle, Ban, RotateCcw, ShieldCheck, UserCog, ListChecks, Check } from 'lucide-react';
 
 interface DashboardProps {
   products: Product[];
@@ -14,9 +14,14 @@ interface DashboardProps {
   onNavigate: (view: ViewState) => void;
   theme: 'light' | 'dark';
   logs?: AuditLog[];
+  businessProfile: { name: string; email: string };
+  isSecurityConfigured: boolean;
 }
 
-export const Dashboard: React.FC<DashboardProps> = ({ products, sales, customers, suppliers, expenses, returns, onNavigate, theme, logs = [] }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ 
+  products, sales, customers, suppliers, expenses, returns, onNavigate, theme, logs = [],
+  businessProfile, isSecurityConfigured
+}) => {
   const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7));
 
   // Financial Calculations - Filtered by Month
@@ -47,27 +52,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ products, sales, customers
       return acc + (p.stockLevel * p.costPrice);
     }, 0);
   }, [products]);
-
-  // Top Selling Products Calculation
-  const topProducts = useMemo(() => {
-    const counts: Record<string, { name: string, qty: number, revenue: number, image?: string }> = {};
-    completedSales.forEach(sale => {
-      sale.items.forEach(item => {
-        if (!counts[item.productId]) {
-          const product = products.find(p => p.id === item.productId);
-          counts[item.productId] = { 
-            name: item.productName, 
-            qty: 0, 
-            revenue: 0,
-            image: product?.image 
-          };
-        }
-        counts[item.productId].qty += item.quantity;
-        counts[item.productId].revenue += item.total;
-      });
-    });
-    return Object.values(counts).sort((a, b) => b.revenue - a.revenue).slice(0, 3);
-  }, [completedSales, products]);
 
   // Status Distribution Data
   const statusData = useMemo(() => [
@@ -106,70 +90,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ products, sales, customers
 
   const recentActivity = logs.slice(0, 5);
 
-  // --- SMART ONBOARDING / EMPTY STATE ---
-  if (products.length === 0) {
-    // ... (Keep existing onboarding return)
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[85vh] text-center space-y-10 animate-in fade-in zoom-in duration-500 pb-20">
-         {/* ... (Existing onboarding code) ... */}
-         <div className="w-32 h-32 bg-indigo-50 dark:bg-indigo-500/10 rounded-[2.5rem] flex items-center justify-center text-indigo-600 dark:text-indigo-400 shadow-2xl shadow-indigo-500/20 mb-4 animate-bounce-subtle ring-4 ring-white dark:ring-slate-900">
-            <Sparkles size={64} />
-         </div>
-         <div className="max-w-lg space-y-4">
-            <h2 className="text-5xl font-serif font-bold text-slate-900 dark:text-white tracking-tight">System Initialized</h2>
-            <p className="text-slate-500 dark:text-slate-400 font-medium text-lg leading-relaxed">
-              Welcome to <strong>TheDécorHub ERP</strong>. Your workspace is ready. Follow the setup sequence to activate your business dashboard.
-            </p>
-         </div>
-         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-5xl px-4 mt-8">
-            <button 
-              onClick={() => onNavigate('suppliers')}
-              className="group p-8 bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 hover:border-blue-500 dark:hover:border-blue-500 transition-all hover:shadow-xl text-left relative overflow-hidden"
-            >
-               <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:opacity-20 transition-opacity transform group-hover:scale-110">
-                 <Truck size={80} />
-               </div>
-               <div className="w-12 h-12 bg-blue-50 dark:bg-blue-500/10 rounded-2xl flex items-center justify-center text-blue-600 dark:text-blue-400 mb-6 font-bold text-lg shadow-sm">1</div>
-               <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Connect Suppliers</h3>
-               <p className="text-sm text-slate-500 leading-relaxed">Register your sourcing partners and manufacturers to establish your supply chain.</p>
-               <div className="mt-6 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-blue-600 dark:text-blue-400">
-                 Initialize <ArrowRight size={14} />
-               </div>
-            </button>
+  // --- READINESS LOGIC ---
+  const readiness = useMemo(() => {
+    return [
+      { id: 'inventory', label: 'Inventory Catalog', isReady: products.length > 0, action: () => onNavigate('inventory') },
+      { id: 'suppliers', label: 'Supplier Connection', isReady: suppliers.length > 0, action: () => onNavigate('suppliers') },
+      { id: 'profile', label: 'Business Profile', isReady: businessProfile.name !== 'TheDécorHub', action: () => onNavigate('settings') },
+      { id: 'security', label: 'Security PIN', isReady: isSecurityConfigured, action: () => onNavigate('settings') }
+    ];
+  }, [products, suppliers, businessProfile, isSecurityConfigured]);
 
-            <button 
-              onClick={() => onNavigate('inventory')}
-              className="group p-8 bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 hover:border-indigo-500 dark:hover:border-indigo-500 transition-all hover:shadow-xl text-left relative overflow-hidden"
-            >
-               <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:opacity-20 transition-opacity transform group-hover:scale-110">
-                 <Package size={80} />
-               </div>
-               <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl flex items-center justify-center text-indigo-600 dark:text-indigo-400 mb-6 font-bold text-lg shadow-sm">2</div>
-               <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Catalog Inventory</h3>
-               <p className="text-sm text-slate-500 leading-relaxed">Add products, configure variants (size/color), and set initial stock levels.</p>
-               <div className="mt-6 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-indigo-600 dark:text-indigo-400">
-                 Create Products <ArrowRight size={14} />
-               </div>
-            </button>
-
-            <button 
-              onClick={() => onNavigate('sales')}
-              className="group p-8 bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 hover:border-emerald-500 dark:hover:border-emerald-500 transition-all hover:shadow-xl text-left relative overflow-hidden opacity-60 hover:opacity-100"
-            >
-               <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:opacity-20 transition-opacity transform group-hover:scale-110">
-                 <ShoppingBag size={80} />
-               </div>
-               <div className="w-12 h-12 bg-emerald-50 dark:bg-emerald-500/10 rounded-2xl flex items-center justify-center text-emerald-600 dark:text-emerald-400 mb-6 font-bold text-lg shadow-sm">3</div>
-               <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Launch POS</h3>
-               <p className="text-sm text-slate-500 leading-relaxed">Once stock is added, the Point of Sale terminal will be ready to process orders.</p>
-               <div className="mt-6 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-emerald-600 dark:text-emerald-400">
-                 Start Selling <ArrowRight size={14} />
-               </div>
-            </button>
-         </div>
-      </div>
-    );
-  }
+  const readinessScore = (readiness.filter(r => r.isReady).length / readiness.length) * 100;
 
   return (
     <div className="space-y-8 pb-10">
@@ -189,28 +120,56 @@ export const Dashboard: React.FC<DashboardProps> = ({ products, sales, customers
         </div>
       </div>
 
+      {/* READINESS CHECK WIDGET */}
+      {readinessScore < 100 && (
+        <div className="bg-indigo-900 text-white p-6 rounded-[2rem] shadow-xl relative overflow-hidden animate-in slide-in-from-top-4">
+           <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full blur-3xl -mr-20 -mt-20"></div>
+           <div className="relative z-10 flex flex-col md:flex-row items-center gap-8">
+              <div className="flex-1">
+                 <div className="flex items-center gap-3 mb-2">
+                    <ListChecks size={24} className="text-indigo-300" />
+                    <h3 className="text-xl font-bold">System Readiness: {readinessScore}%</h3>
+                 </div>
+                 <p className="text-indigo-200 text-sm mb-4">Complete the following steps to ensure your business system is fully operational.</p>
+                 <div className="w-full bg-indigo-950/50 h-2 rounded-full overflow-hidden">
+                    <div className="bg-gradient-to-r from-amber-400 to-indigo-400 h-full transition-all duration-1000" style={{ width: `${readinessScore}%` }}></div>
+                 </div>
+              </div>
+              <div className="flex flex-wrap gap-3 justify-center md:justify-end">
+                 {readiness.map(item => (
+                    <button 
+                      key={item.id} 
+                      onClick={item.action}
+                      disabled={item.isReady}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                        item.isReady 
+                          ? 'bg-green-500/20 text-green-300 cursor-default' 
+                          : 'bg-white text-indigo-900 hover:bg-indigo-50 shadow-lg animate-pulse-subtle'
+                      }`}
+                    >
+                       {item.isReady ? <CheckCircle2 size={14}/> : <AlertCircle size={14}/>}
+                       {item.label}
+                    </button>
+                 ))}
+              </div>
+           </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {/* KPI Cards */}
-        <div className="bg-slate-900 text-white p-8 rounded-[2.5rem] shadow-2xl relative overflow-hidden group hover:scale-[1.02] transition-transform duration-300">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/20 rounded-full blur-2xl -mr-16 -mt-16 group-hover:bg-indigo-500/30 transition-colors"></div>
-          <div className="relative z-10">
-            <div className="flex items-center gap-3 mb-4 text-indigo-400">
-              <Wallet size={20} />
-              <h3 className="text-[10px] font-black uppercase tracking-widest">Product Revenue (Net)</h3>
-            </div>
-            <div className="flex items-baseline gap-1">
-              <span className="text-lg opacity-50 font-serif">৳</span>
-              <p className="text-4xl font-serif font-bold tracking-tighter">{netProductRevenue.toLocaleString()}</p>
-            </div>
-            <div className="mt-4 flex flex-col gap-1 text-xs">
-              <div className="flex justify-between text-indigo-300/80">
-                 <span>Gross Product Sales:</span> <span>৳{grossProductRevenue.toLocaleString()}</span>
-              </div>
-              {totalRefunds > 0 && (
-                <div className="flex justify-between text-red-400">
-                   <span>Returns:</span> <span>-৳{totalRefunds.toLocaleString()}</span>
-                </div>
-              )}
+        <div className="bg-white dark:bg-slate-900/50 p-8 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm hover:border-indigo-500/30 transition-colors group">
+          <div className="flex items-center gap-3 mb-4 text-indigo-600 dark:text-indigo-400">
+            <Wallet size={20} />
+            <h3 className="text-[10px] font-black uppercase tracking-widest">Net Revenue</h3>
+          </div>
+          <div className="flex items-baseline gap-1">
+            <span className="text-lg opacity-50 font-serif">৳</span>
+            <p className="text-4xl font-serif font-bold text-slate-900 dark:text-white tracking-tighter">{netProductRevenue.toLocaleString()}</p>
+          </div>
+          <div className="mt-4 flex flex-col gap-1 text-xs">
+            <div className="flex justify-between text-slate-500">
+               <span>Gross Sales:</span> <span>৳{grossProductRevenue.toLocaleString()}</span>
             </div>
           </div>
         </div>
@@ -236,20 +195,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ products, sales, customers
         <div className="bg-white dark:bg-slate-900/50 p-8 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm hover:border-indigo-500/30 transition-colors group">
           <div className="flex items-center gap-3 mb-4 text-amber-600 dark:text-amber-400">
             <Activity size={20} />
-            <h3 className="text-[10px] font-black uppercase tracking-widest">Order Action</h3>
+            <h3 className="text-[10px] font-black uppercase tracking-widest">Pending Action</h3>
           </div>
           <div className="flex items-baseline gap-1">
             <p className="text-4xl font-serif font-bold text-slate-900 dark:text-white tracking-tighter">{pendingSales.length}</p>
-            <span className="text-xs text-slate-400 font-bold uppercase">Pending</span>
+            <span className="text-xs text-slate-400 font-bold uppercase">Orders</span>
           </div>
           <div className="mt-4 text-xs font-medium space-y-1">
              <div className="flex items-center justify-between text-slate-500">
                 <span className="flex items-center gap-1"><RotateCcw size={12} className="text-purple-500"/> Returned</span>
                 <span>{returnedSales.length}</span>
-             </div>
-             <div className="flex items-center justify-between text-slate-500">
-                <span className="flex items-center gap-1"><Ban size={12} className="text-red-500"/> Cancelled</span>
-                <span>{cancelledSales.length}</span>
              </div>
           </div>
         </div>
@@ -276,7 +231,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ products, sales, customers
         <div className="lg:col-span-2 bg-white dark:bg-slate-900/50 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 p-8 shadow-sm">
            <div className="flex justify-between items-center mb-8">
               <h3 className="font-bold text-lg text-slate-900 dark:text-white flex items-center gap-2">
-                 <TrendingUp size={20} className="text-indigo-500" /> Revenue Trajectory (Product Sales)
+                 <TrendingUp size={20} className="text-indigo-500" /> Revenue Trajectory
               </h3>
               <div className="flex items-center gap-2 text-xs font-bold text-slate-400">
                  <span className="w-2 h-2 rounded-full bg-indigo-500"></span> 6 Month Trend
@@ -313,7 +268,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ products, sales, customers
                        border: 'none', 
                        boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' 
                      }}
-                     formatter={(value: number) => [`৳${value.toLocaleString()}`, 'Product Revenue']}
+                     formatter={(value: number) => [`৳${value.toLocaleString()}`, 'Revenue']}
                    />
                    <Area type="monotone" dataKey="revenue" stroke="#7c3aed" strokeWidth={3} fillOpacity={1} fill="url(#colorRevenue)" />
                 </AreaChart>
