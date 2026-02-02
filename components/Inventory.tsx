@@ -17,25 +17,11 @@ interface InventoryProps {
 }
 
 const CATEGORIES = [
-  'Furniture',
-  'Lighting',
-  'Textiles',
-  'Showpiece',
-  'Wall Decor',
-  'Kitchenware',
-  'Garden',
-  'Accessories'
+  'Furniture', 'Lighting', 'Textiles', 'Showpiece', 'Wall Decor', 'Kitchenware', 'Garden', 'Accessories'
 ];
 
 const CATEGORY_PREFIXES: Record<string, string> = {
-  'Furniture': 'FUR',
-  'Lighting': 'LGT',
-  'Textiles': 'TEX',
-  'Showpiece': 'SHW',
-  'Wall Decor': 'WLD',
-  'Kitchenware': 'KIT',
-  'Garden': 'GDN',
-  'Accessories': 'ACC'
+  'Furniture': 'FUR', 'Lighting': 'LGT', 'Textiles': 'TEX', 'Showpiece': 'SHW', 'Wall Decor': 'WLD', 'Kitchenware': 'KIT', 'Garden': 'GDN', 'Accessories': 'ACC'
 };
 
 export const Inventory: React.FC<InventoryProps> = ({ 
@@ -44,6 +30,7 @@ export const Inventory: React.FC<InventoryProps> = ({
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
+  const [showLowStockOnly, setShowLowStockOnly] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -51,7 +38,6 @@ export const Inventory: React.FC<InventoryProps> = ({
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  // New State for Variant Type Toggle
   const [variantType, setVariantType] = useState<'Color' | 'Size'>('Color');
 
   useEffect(() => {
@@ -63,7 +49,6 @@ export const Inventory: React.FC<InventoryProps> = ({
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Stats Logic
   const stats = useMemo(() => {
     let totalValue = 0;
     let totalItems = 0;
@@ -97,20 +82,21 @@ export const Inventory: React.FC<InventoryProps> = ({
     
     const matchesCategory = selectedCategory === '' || p.category === selectedCategory;
     
-    return matchesSearch && matchesCategory;
+    const matchesLowStock = showLowStockOnly 
+        ? (p.hasVariants 
+            ? p.variants?.some(v => v.stockLevel <= (v.minStockLevel || 5)) 
+            : p.stockLevel <= (p.minStockLevel || 5))
+        : true;
+    
+    return matchesSearch && matchesCategory && matchesLowStock;
   });
 
   const totalPages = Math.ceil(filteredProducts.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const paginatedProducts = filteredProducts.slice(startIndex, startIndex + itemsPerPage);
 
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchTerm, selectedCategory]);
-
   const generateSKU = (category: string) => {
     const prefix = CATEGORY_PREFIXES[category] || 'GEN';
-    // Calculate next sequence number based on existing products in this category
     const count = products.filter(p => p.category === category).length + 1;
     return `${prefix}-${String(count).padStart(3, '0')}`;
   };
@@ -120,9 +106,7 @@ export const Inventory: React.FC<InventoryProps> = ({
     if (product) {
       setEditingId(product.id);
       setFormData({ ...product });
-      // Infer variant type from first variant if possible, mostly for UI consistency
       if (product.variants && product.variants.length > 0) {
-         // Simple heuristic: if name contains XS, S, M, L, XL -> Size, else Color
          const firstVarName = product.variants[0].name.toUpperCase();
          if (['XS','S','M','L','XL','XXL'].some(s => firstVarName.includes(s))) {
              setVariantType('Size');
@@ -135,16 +119,7 @@ export const Inventory: React.FC<InventoryProps> = ({
       const defaultCat = 'Furniture';
       setFormData({ 
           sku: generateSKU(defaultCat), 
-          name: '', 
-          category: defaultCat, 
-          costPrice: 0, 
-          sellingPrice: 0, 
-          stockLevel: 0, 
-          minStockLevel: 5, 
-          hasVariants: false, 
-          variants: [], 
-          image: '', 
-          supplierId: '' 
+          name: '', category: defaultCat, costPrice: 0, sellingPrice: 0, stockLevel: 0, minStockLevel: 5, hasVariants: false, variants: [], image: '', supplierId: '' 
       });
     }
     setIsModalOpen(true);
@@ -153,7 +128,6 @@ export const Inventory: React.FC<InventoryProps> = ({
   const handleCategoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newCat = e.target.value;
     if (!editingId) {
-        // Auto-generate SKU only for new products
         setFormData(prev => ({ ...prev, category: newCat, sku: generateSKU(newCat) }));
     } else {
         setFormData(prev => ({ ...prev, category: newCat }));
@@ -165,10 +139,8 @@ export const Inventory: React.FC<InventoryProps> = ({
     if (file) {
       if (file.size > 500 * 1024) {
         if (notify) notify('Image file too large. Max 500KB allowed.', 'error');
-        else alert('Image file too large. Max 500KB allowed.');
         return;
       }
-      
       const reader = new FileReader();
       reader.onloadend = () => {
         setFormData({ ...formData, image: reader.result as string });
@@ -179,15 +151,13 @@ export const Inventory: React.FC<InventoryProps> = ({
 
   const handleAddVariant = () => {
     const nextIndex = (formData.variants?.length || 0) + 1;
-    // Auto-generate Variant SKU based on Parent SKU
     const variantSku = `${formData.sku}-${String(nextIndex).padStart(2, '0')}`;
-    
     const newVariant: ProductVariant = {
       id: Date.now().toString(),
       sku: variantSku,
       name: '',
-      costPrice: formData.costPrice || 0, // Inherit cost
-      sellingPrice: formData.sellingPrice || 0, // Inherit price
+      costPrice: formData.costPrice || 0,
+      sellingPrice: formData.sellingPrice || 0,
       stockLevel: 0,
       minStockLevel: 5
     };
@@ -207,16 +177,13 @@ export const Inventory: React.FC<InventoryProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
     if (!formData.hasVariants) {
       const existingProduct = products.find(p => p.sku === formData.sku && p.id !== editingId);
       if (existingProduct) {
-        setErrorMsg(`SKU "${formData.sku}" is already in use by "${existingProduct.name}".`);
-        if (notify) notify(`SKU collision detected`, 'error');
+        setErrorMsg(`SKU "${formData.sku}" is already in use.`);
         return;
       }
     }
-
     const finalProduct = { ...formData, id: editingId || Date.now().toString() } as Product;
     if (editingId) {
       onUpdateProduct(finalProduct);
@@ -228,7 +195,6 @@ export const Inventory: React.FC<InventoryProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Header and Stats */}
       <div className="flex flex-col gap-6">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
@@ -242,8 +208,8 @@ export const Inventory: React.FC<InventoryProps> = ({
 
         {/* Stats Bar */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-[2rem] shadow-sm flex items-center gap-4">
-                <div className="p-3 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-xl">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-[2rem] shadow-sm flex items-center gap-4 group">
+                <div className="p-3 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-xl group-hover:scale-110 transition-transform">
                     <BadgeDollarSign size={24} />
                 </div>
                 <div>
@@ -251,25 +217,20 @@ export const Inventory: React.FC<InventoryProps> = ({
                     <p className="text-2xl font-serif font-bold text-slate-900 dark:text-white">৳{stats.totalValue.toLocaleString()}</p>
                 </div>
             </div>
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-[2rem] shadow-sm flex items-center gap-4">
-                <div className="p-3 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-xl">
-                    <Package size={24} />
-                </div>
-                <div>
-                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Items in Stock</p>
-                    <p className="text-2xl font-serif font-bold text-slate-900 dark:text-white">{stats.totalItems.toLocaleString()}</p>
-                </div>
-            </div>
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-[2rem] shadow-sm flex items-center gap-4">
-                <div className={`p-3 rounded-xl ${stats.lowStock > 0 ? 'bg-red-50 text-red-500 dark:bg-red-500/10' : 'bg-green-50 text-green-500 dark:bg-green-500/10'}`}>
+            <div 
+              className={`bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-[2rem] shadow-sm flex items-center gap-4 cursor-pointer hover:border-red-200 dark:hover:border-red-900/50 transition-colors group ${showLowStockOnly ? 'ring-2 ring-red-500' : ''}`}
+              onClick={() => setShowLowStockOnly(!showLowStockOnly)}
+            >
+                <div className={`p-3 rounded-xl transition-transform group-hover:scale-110 ${stats.lowStock > 0 ? 'bg-red-50 text-red-500 dark:bg-red-500/10' : 'bg-green-50 text-green-500 dark:bg-green-500/10'}`}>
                     <AlertTriangle size={24} />
                 </div>
                 <div>
-                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Stock Alerts</p>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Stock Alerts (Click to Filter)</p>
                     <p className={`text-2xl font-serif font-bold ${stats.lowStock > 0 ? 'text-red-500' : 'text-slate-900 dark:text-white'}`}>
                         {stats.lowStock > 0 ? `${stats.lowStock} Low Stock` : 'Optimal'}
                     </p>
                 </div>
+                {showLowStockOnly && <X size={16} className="ml-auto text-red-500" />}
             </div>
         </div>
       </div>
@@ -294,9 +255,7 @@ export const Inventory: React.FC<InventoryProps> = ({
             onChange={(e) => setSelectedCategory(e.target.value)}
           >
             <option value="">All Categories</option>
-            {CATEGORIES.map(cat => (
-              <option key={cat} value={cat}>{cat}</option>
-            ))}
+            {CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
           </select>
           <ChevronDown className="absolute right-5 top-1/2 transform -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
         </div>
@@ -310,8 +269,8 @@ export const Inventory: React.FC<InventoryProps> = ({
                 <th className="px-8 py-6 font-bold text-slate-600 dark:text-slate-300 text-[10px] uppercase tracking-widest">Product Details</th>
                 <th className="px-8 py-6 font-bold text-slate-600 dark:text-slate-300 text-[10px] uppercase tracking-widest">Category & Source</th>
                 <th className="px-8 py-6 font-bold text-slate-600 dark:text-slate-300 text-[10px] uppercase tracking-widest text-right">Agg. Stock</th>
-                <th className="px-8 py-6 font-bold text-slate-600 dark:text-slate-300 text-[10px] uppercase tracking-widest text-right">Cost Value (৳)</th>
-                <th className="px-8 py-6 font-bold text-slate-600 dark:text-slate-300 text-[10px] uppercase tracking-widest text-right">Retail Value (৳)</th>
+                <th className="px-8 py-6 font-bold text-slate-600 dark:text-slate-300 text-[10px] uppercase tracking-widest text-right">Cost (৳)</th>
+                <th className="px-8 py-6 font-bold text-slate-600 dark:text-slate-300 text-[10px] uppercase tracking-widest text-right">Retail (৳)</th>
                 <th className="px-8 py-6 font-bold text-slate-600 dark:text-slate-300 text-[10px] uppercase tracking-widest text-right">Actions</th>
               </tr>
             </thead>
@@ -319,49 +278,37 @@ export const Inventory: React.FC<InventoryProps> = ({
               {paginatedProducts.map((product) => {
                 const totalStock = product.hasVariants ? product.variants?.reduce((a, b) => a + b.stockLevel, 0) : product.stockLevel;
                 const supplier = suppliers.find(s => s.id === product.supplierId);
-                
                 const isLowStock = product.hasVariants 
                   ? product.variants?.some(v => v.stockLevel <= (v.minStockLevel || 5))
                   : product.stockLevel <= (product.minStockLevel || 5);
 
                 const minRetail = product.hasVariants ? Math.min(...(product.variants?.map(v => v.sellingPrice) || [0])) : product.sellingPrice;
                 const maxRetail = product.hasVariants ? Math.max(...(product.variants?.map(v => v.sellingPrice) || [0])) : product.sellingPrice;
-                
                 const minCost = product.hasVariants ? Math.min(...(product.variants?.map(v => v.costPrice) || [0])) : product.costPrice;
                 const maxCost = product.hasVariants ? Math.max(...(product.variants?.map(v => v.costPrice) || [0])) : product.costPrice;
                 
-                const rowClass = isLowStock 
-                  ? "hover:bg-red-50/50 dark:hover:bg-red-900/10 border-l-4 border-l-red-500 transition-colors group animate-in fade-in duration-300" 
-                  : "hover:bg-slate-50/80 dark:hover:bg-slate-800 transition-colors group animate-in fade-in duration-300 border-l-4 border-l-transparent";
-
                 return (
-                  <tr key={product.id} className={rowClass}>
+                  <tr key={product.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800 transition-colors group animate-in fade-in duration-300">
                     <td className="px-8 py-6 relative">
                       <div className="flex items-center gap-4">
                         <div className="relative group/image-trigger">
-                          <div className={`w-12 h-12 rounded-xl overflow-hidden flex items-center justify-center border cursor-zoom-in group-hover/image-trigger:ring-2 ring-indigo-500 transition-all ${isLowStock ? 'bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-900/50' : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`}>
+                          <div className={`w-12 h-12 rounded-xl overflow-hidden flex items-center justify-center border cursor-zoom-in group-hover/image-trigger:ring-2 ring-indigo-500 transition-all ${isLowStock ? 'bg-red-50 border-red-200 dark:bg-red-900/20' : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`}>
                             {product.image ? (
                               <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
                             ) : (
-                              isLowStock ? <AlertTriangle size={20} className="text-red-500" /> : <ImageIconLucide size={20} className="text-slate-400 dark:text-slate-500" />
+                              isLowStock ? <AlertTriangle size={20} className="text-red-500" /> : <ImageIconLucide size={20} className="text-slate-400" />
                             )}
                           </div>
                           {product.image && (
-                            <div className="absolute left-16 top-1/2 -translate-y-1/2 w-80 h-80 z-[100] pointer-events-none opacity-0 group-hover/image-trigger:opacity-100 group-hover/image-trigger:scale-100 scale-75 translate-x-4 group-hover/image-trigger:translate-x-0 transition-all duration-300 ease-out origin-left">
-                              <div className="w-full h-full rounded-[2.5rem] overflow-hidden bg-white dark:bg-slate-900 border-[6px] border-white dark:border-slate-800 shadow-[0_30px_60px_-15px_rgba(0,0,0,0.6)] flex items-center justify-center p-2">
-                                <img src={product.image} alt="Preview" className="max-w-full max-h-full object-contain rounded-2xl" />
-                                <div className="absolute bottom-6 left-6 right-6 bg-slate-900/80 backdrop-blur-md px-4 py-2 rounded-2xl border border-white/10 shadow-lg">
-                                   <p className="text-[10px] text-white font-black uppercase tracking-[0.1em] text-center truncate">{product.name}</p>
-                                   <p className="text-[8px] text-indigo-400 font-bold uppercase tracking-widest text-center mt-0.5">{product.category}</p>
-                                </div>
-                              </div>
+                            <div className="absolute left-16 top-1/2 -translate-y-1/2 w-48 h-48 z-[100] pointer-events-none opacity-0 group-hover/image-trigger:opacity-100 group-hover/image-trigger:scale-100 scale-75 translate-x-4 group-hover/image-trigger:translate-x-0 transition-all duration-300 ease-out origin-left bg-white dark:bg-slate-900 p-2 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700">
+                                <img src={product.image} alt="Preview" className="w-full h-full object-cover rounded-lg" />
                             </div>
                           )}
                         </div>
                         <div className="flex flex-col">
                           <span className="font-bold text-slate-800 dark:text-slate-200">{product.name}</span>
                           <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400 uppercase tracking-tight font-semibold flex items-center gap-1">
-                            {product.hasVariants ? 'Multi-SKU Config' : product.sku}
+                            {product.hasVariants ? 'Multi-SKU' : product.sku}
                             {isLowStock && <span className="text-red-500 font-bold flex items-center gap-0.5 ml-1"><AlertCircle size={10} /> Low Stock</span>}
                           </span>
                         </div>
@@ -398,55 +345,13 @@ export const Inventory: React.FC<InventoryProps> = ({
             </tbody>
           </table>
         </div>
-
-        {/* Pagination Controls */}
         {totalPages > 1 && (
-          <div className="px-8 py-6 bg-slate-50 dark:bg-slate-800/40 border-t border-slate-100 dark:border-slate-700 flex flex-col sm:flex-row justify-between items-center gap-4">
-            <span className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400 tracking-widest">
-              Showing {startIndex + 1} to {Math.min(startIndex + itemsPerPage, filteredProducts.length)} of {filteredProducts.length} entries
-            </span>
-            <div className="flex items-center gap-2">
-              <button 
-                disabled={currentPage === 1}
-                onClick={() => setCurrentPage(p => p - 1)}
-                className="p-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 disabled:opacity-30 transition-all"
-              >
-                <ChevronLeft size={16} />
-              </button>
-              
-              <div className="flex items-center gap-1">
-                {[...Array(totalPages)].map((_, i) => {
-                  const pageNum = i + 1;
-                  if (pageNum === 1 || pageNum === totalPages || (pageNum >= currentPage - 1 && pageNum <= currentPage + 1)) {
-                    return (
-                      <button
-                        key={pageNum}
-                        onClick={() => setCurrentPage(pageNum)}
-                        className={`min-w-[40px] h-10 rounded-xl text-[10px] font-black tracking-widest transition-all ${
-                          currentPage === pageNum 
-                            ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30 border-transparent' 
-                            : 'bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700'
-                        }`}
-                      >
-                        {pageNum}
-                      </button>
-                    );
-                  }
-                  if (pageNum === currentPage - 2 || pageNum === currentPage + 2) {
-                    return <span key={pageNum} className="px-1 text-slate-400">...</span>;
-                  }
-                  return null;
-                })}
-              </div>
-
-              <button 
-                disabled={currentPage === totalPages}
-                onClick={() => setCurrentPage(p => p + 1)}
-                className="p-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 disabled:opacity-30 transition-all"
-              >
-                <ChevronRight size={16} />
-              </button>
-            </div>
+          <div className="px-8 py-6 border-t border-slate-100 dark:border-slate-700 flex justify-between items-center">
+             <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Page {currentPage} of {totalPages}</span>
+             <div className="flex gap-2">
+                <button disabled={currentPage === 1} onClick={() => setCurrentPage(p => p - 1)} className="p-2 bg-slate-100 dark:bg-slate-800 rounded-lg disabled:opacity-50"><ChevronLeft size={16}/></button>
+                <button disabled={currentPage === totalPages} onClick={() => setCurrentPage(p => p + 1)} className="p-2 bg-slate-100 dark:bg-slate-800 rounded-lg disabled:opacity-50"><ChevronRight size={16}/></button>
+             </div>
           </div>
         )}
       </div>
@@ -463,196 +368,131 @@ export const Inventory: React.FC<InventoryProps> = ({
             </div>
             
             <form onSubmit={handleSubmit} className="p-10 space-y-8 overflow-y-auto max-h-[75vh] custom-scrollbar">
-              {errorMsg && (
-                <div className="bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 p-4 rounded-2xl flex items-center gap-2 text-xs font-bold animate-in slide-in-from-top-2">
-                  <AlertCircle size={16} />
-                  {errorMsg}
-                </div>
-              )}
-              
+              {errorMsg && <div className="bg-red-50 text-red-600 p-4 rounded-xl text-sm font-bold">{errorMsg}</div>}
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
-                <div className="lg:col-span-8 space-y-8">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                      <label className="block text-[10px] font-black uppercase text-slate-500 dark:text-slate-400 tracking-widest mb-2 ml-1">Product Name</label>
-                      <input required className="w-full p-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white transition-all shadow-inner" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="e.g. Royal Ottoman Velvet Sofa" />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-black uppercase text-slate-500 dark:text-slate-400 tracking-widest mb-2 ml-1">Primary Category</label>
-                      <div className="relative">
-                        <select className="w-full p-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl outline-none dark:text-white transition-all appearance-none shadow-inner" value={formData.category} onChange={handleCategoryChange}>
-                          {CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-                        </select>
-                        <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none opacity-60"><Package size={16}/></div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Supplier Selection */}
-                  <div className="group">
-                    <label className="block text-[10px] font-black uppercase text-slate-500 dark:text-slate-400 tracking-widest mb-2 ml-1">Sourcing Partner</label>
-                    <select 
-                      className="w-full p-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl outline-none dark:text-white transition-all appearance-none shadow-inner cursor-pointer" 
-                      value={formData.supplierId} 
-                      onChange={e => setFormData({...formData, supplierId: e.target.value})}
-                    >
-                      <option value="">-- Internal / Unassigned --</option>
-                      {suppliers.map(s => <option key={s.id} value={s.id}>{s.name} ({s.contactPerson})</option>)}
-                    </select>
-                  </div>
-
-                  <div className="bg-indigo-50/50 dark:bg-indigo-500/10 p-8 rounded-[2.5rem] border border-indigo-100 dark:border-indigo-500/20 space-y-6">
-                    <div className="flex justify-between items-center">
-                      <h4 className="text-[10px] font-black uppercase text-indigo-600 dark:text-indigo-400 tracking-widest">Pricing & Stock Mode</h4>
-                      <div className="flex items-center gap-3">
-                        <span className={`text-[10px] font-black uppercase tracking-widest transition-colors ${!formData.hasVariants ? 'text-indigo-600' : 'text-slate-500 dark:text-slate-400'}`}>Standard</span>
-                        <button type="button" onClick={() => setFormData({...formData, hasVariants: !formData.hasVariants})} className={`w-12 h-6 rounded-full relative transition-colors ${formData.hasVariants ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-700'}`}>
-                          <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all duration-300 ${formData.hasVariants ? 'right-1' : 'left-1'}`} />
-                        </button>
-                        <span className={`text-[10px] font-black uppercase tracking-widest transition-colors ${formData.hasVariants ? 'text-indigo-600' : 'text-slate-500 dark:text-slate-400'}`}>Variable</span>
-                      </div>
+                <div className="lg:col-span-8 space-y-6">
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Product Name</label>
+                            <input required className="w-full p-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
+                        </div>
+                        <div>
+                            <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Category</label>
+                            <select className="w-full p-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl outline-none appearance-none" value={formData.category} onChange={handleCategoryChange}>
+                                {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                            </select>
+                        </div>
                     </div>
                     
-                    {!formData.hasVariants ? (
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 animate-in fade-in">
-                        <div className="col-span-2">
-                          <label className="block text-[10px] font-black uppercase text-indigo-600 dark:text-indigo-400 tracking-widest mb-1">SKU Identification</label>
-                          <input required className="w-full p-3.5 bg-white dark:bg-slate-800 border border-indigo-100 dark:border-indigo-500/20 rounded-xl dark:text-white font-mono text-xs" value={formData.sku} onChange={e => setFormData({...formData, sku: e.target.value})} placeholder="SKU-001" />
+                    <div className="bg-indigo-50/50 dark:bg-indigo-900/10 p-6 rounded-[2rem] border border-indigo-100 dark:border-indigo-500/20">
+                        <div className="flex justify-between items-center mb-4">
+                            <h4 className="text-xs font-bold text-indigo-700 dark:text-indigo-300 uppercase tracking-widest">Inventory Type</h4>
+                            <button type="button" onClick={() => setFormData({...formData, hasVariants: !formData.hasVariants})} className={`px-4 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-colors ${formData.hasVariants ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-600'}`}>
+                                {formData.hasVariants ? 'Multi-Variant' : 'Standard Item'}
+                            </button>
                         </div>
-                        <div className="col-span-2 md:col-span-1">
-                          <label className="block text-[10px] font-black uppercase text-indigo-600 dark:text-indigo-400 tracking-widest mb-1">Stock Level</label>
-                          <input type="number" className="w-full p-3.5 bg-white dark:bg-slate-800 border border-indigo-100 dark:border-indigo-500/20 rounded-xl dark:text-white font-mono" value={formData.stockLevel} onChange={e => setFormData({...formData, stockLevel: Number(e.target.value)})} />
-                        </div>
-                        <div className="col-span-2 md:col-span-1">
-                          <label className="block text-[10px] font-black uppercase text-indigo-600 dark:text-indigo-400 tracking-widest mb-1">Min Stock (Alert)</label>
-                          <input type="number" className="w-full p-3.5 bg-white dark:bg-slate-800 border border-indigo-100 dark:border-indigo-500/20 rounded-xl dark:text-white font-mono" value={formData.minStockLevel || 5} onChange={e => setFormData({...formData, minStockLevel: Number(e.target.value)})} />
-                        </div>
-                        <div className="col-span-2 md:col-span-2">
-                          <label className="block text-[10px] font-black uppercase text-indigo-600 dark:text-indigo-400 tracking-widest mb-1">Cost (৳)</label>
-                          <input type="number" step="0.01" className="w-full p-3.5 bg-white dark:bg-slate-800 border border-indigo-100 dark:border-indigo-500/20 rounded-xl dark:text-white" value={formData.costPrice} onChange={e => setFormData({...formData, costPrice: Number(e.target.value)})} />
-                        </div>
-                        <div className="col-span-2">
-                          <label className="block text-[10px] font-black uppercase text-indigo-600 dark:text-indigo-400 tracking-widest mb-1">Selling Price (৳)</label>
-                          <input type="number" step="0.01" className="w-full p-3.5 bg-white dark:bg-slate-800 border border-indigo-100 dark:border-indigo-500/20 rounded-xl font-bold text-indigo-600 dark:text-indigo-400 dark:text-white" value={formData.sellingPrice} onChange={e => setFormData({...formData, sellingPrice: Number(e.target.value)})} />
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="p-6 bg-indigo-100/30 dark:bg-indigo-500/10 rounded-2xl flex items-center gap-4 text-indigo-700 dark:text-indigo-300">
-                        <Layers size={24} />
-                        <p className="text-xs font-bold leading-relaxed uppercase tracking-wide">Variant-specific details (Stock, Price, Reorder Points) are configured below.</p>
-                      </div>
-                    )}
-                  </div>
+                        {!formData.hasVariants && (
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                <div className="col-span-2">
+                                    <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">SKU</label>
+                                    <input className="w-full p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-mono" value={formData.sku} onChange={e => setFormData({...formData, sku: e.target.value})} />
+                                </div>
+                                <div>
+                                    <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Cost (৳)</label>
+                                    <input type="number" className="w-full p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs" value={formData.costPrice} onChange={e => setFormData({...formData, costPrice: Number(e.target.value)})} />
+                                </div>
+                                <div>
+                                    <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Price (৳)</label>
+                                    <input type="number" className="w-full p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-indigo-600" value={formData.sellingPrice} onChange={e => setFormData({...formData, sellingPrice: Number(e.target.value)})} />
+                                </div>
+                                <div>
+                                    <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Stock</label>
+                                    <input type="number" className="w-full p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-mono" value={formData.stockLevel} onChange={e => setFormData({...formData, stockLevel: Number(e.target.value)})} />
+                                </div>
+                                <div>
+                                    <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Min Alert</label>
+                                    <input type="number" className="w-full p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-mono" value={formData.minStockLevel} onChange={e => setFormData({...formData, minStockLevel: Number(e.target.value)})} />
+                                </div>
+                            </div>
+                        )}
+                    </div>
                 </div>
-
-                <div className="lg:col-span-4 space-y-6">
-                  <label className="block text-[10px] font-black uppercase text-slate-500 dark:text-slate-400 tracking-widest ml-1">Product Visual</label>
-                  <div 
-                    onClick={() => fileInputRef.current?.click()}
-                    className="relative group aspect-square rounded-[3rem] border-2 border-dashed border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 flex flex-col items-center justify-center cursor-pointer hover:border-indigo-500 hover:bg-indigo-50/30 dark:hover:bg-indigo-500/5 transition-all overflow-hidden"
-                  >
-                    {formData.image ? (
-                      <>
-                        <img src={formData.image} alt="Preview" className="w-full h-full object-cover transition-transform group-hover:scale-110" />
-                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                          <div className="bg-white text-black px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest shadow-xl">Replace Image</div>
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <div className="p-6 rounded-full bg-white dark:bg-slate-800 shadow-xl text-slate-400 dark:text-slate-500 mb-4 group-hover:text-indigo-500 group-hover:scale-110 transition-all">
-                          <Upload size={32} />
-                        </div>
-                        <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Click to Upload</p>
-                        <p className="text-[9px] text-slate-500 dark:text-slate-400 uppercase mt-2 opacity-70">Max 500KB</p>
-                      </>
-                    )}
-                    <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
-                  </div>
+                <div className="lg:col-span-4">
+                    <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Image</label>
+                    <div onClick={() => fileInputRef.current?.click()} className="aspect-square bg-slate-50 dark:bg-slate-900 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-[2rem] flex flex-col items-center justify-center cursor-pointer hover:border-indigo-500 transition-colors overflow-hidden relative group">
+                        {formData.image ? (
+                          <>
+                            <img src={formData.image} className="w-full h-full object-cover" />
+                            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                               <p className="text-white text-xs font-bold">Change Image</p>
+                            </div>
+                          </>
+                        ) : (
+                          <div className="text-center text-slate-400">
+                            <ImageIcon size={32} className="mx-auto mb-2"/>
+                            Click to Upload
+                          </div>
+                        )}
+                        <input ref={fileInputRef} type="file" hidden accept="image/*" onChange={handleImageUpload} />
+                    </div>
+                    
+                    <div className="flex justify-between items-center mt-2">
+                      <p className="text-[9px] text-slate-400">Max 500KB.</p>
+                      {formData.image && (
+                        <button 
+                          type="button" 
+                          onClick={() => setFormData({...formData, image: ''})} 
+                          className="text-[9px] text-red-500 hover:underline font-bold"
+                        >
+                          Remove Image
+                        </button>
+                      )}
+                    </div>
                 </div>
               </div>
 
               {formData.hasVariants && (
-                <div className="space-y-6 animate-in slide-in-from-top-4 duration-500">
-                  <div className="flex flex-col md:flex-row justify-between items-start md:items-center px-2 gap-4">
-                    <div className="flex items-center gap-3">
-                      <Layers className="text-indigo-600" size={20} />
-                      <h3 className="text-xl font-serif font-bold text-slate-800 dark:text-white">Product Variants</h3>
-                    </div>
-                    
-                    {/* Variant Type Toggle */}
-                    <div className="flex p-1 bg-slate-100 dark:bg-slate-800 rounded-xl">
-                        <button
-                          type="button"
-                          onClick={() => setVariantType('Color')}
-                          className={`px-4 py-2 text-xs font-bold rounded-lg transition-all flex items-center gap-2 ${variantType === 'Color' ? 'bg-white dark:bg-slate-700 shadow text-indigo-600 dark:text-white' : 'text-slate-500'}`}
-                        >
-                          <Palette size={14} /> Color
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setVariantType('Size')}
-                          className={`px-4 py-2 text-xs font-bold rounded-lg transition-all flex items-center gap-2 ${variantType === 'Size' ? 'bg-white dark:bg-slate-700 shadow text-indigo-600 dark:text-white' : 'text-slate-500'}`}
-                        >
-                          <Ruler size={14} /> Size
-                        </button>
-                    </div>
-
-                    <button type="button" onClick={handleAddVariant} className="bg-indigo-600 text-white px-5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-500/20 active:scale-95">
-                      <Plus size={14} /> Add Variant
-                    </button>
+                  <div className="space-y-4">
+                      <div className="flex justify-between items-center">
+                          <h4 className="font-bold text-slate-700 dark:text-slate-300">Variant Configuration</h4>
+                          <div className="flex gap-2">
+                              <button type="button" onClick={() => setVariantType('Color')} className={`px-3 py-1.5 text-xs font-bold rounded-lg border ${variantType === 'Color' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600'}`}>Color</button>
+                              <button type="button" onClick={() => setVariantType('Size')} className={`px-3 py-1.5 text-xs font-bold rounded-lg border ${variantType === 'Size' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600'}`}>Size</button>
+                              <button type="button" onClick={handleAddVariant} className="px-3 py-1.5 bg-slate-900 text-white text-xs font-bold rounded-lg flex items-center gap-1"><Plus size={12}/> Add</button>
+                          </div>
+                      </div>
+                      <div className="bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+                          <table className="w-full text-left text-xs">
+                              <thead className="bg-slate-100 dark:bg-slate-900/50 font-bold text-slate-500 uppercase">
+                                  <tr>
+                                      <th className="px-4 py-3">{variantType}</th>
+                                      <th className="px-4 py-3">SKU</th>
+                                      <th className="px-4 py-3">Cost</th>
+                                      <th className="px-4 py-3">Price</th>
+                                      <th className="px-4 py-3">Stock</th>
+                                      <th className="px-4 py-3 w-10"></th>
+                                  </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
+                                  {formData.variants?.map((v, i) => (
+                                      <tr key={i}>
+                                          <td className="p-2"><input className="w-full p-2 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700" value={v.name} onChange={e => handleUpdateVariant(i, 'name', e.target.value)} placeholder="Variant Name" /></td>
+                                          <td className="p-2"><input className="w-full p-2 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-mono" value={v.sku} onChange={e => handleUpdateVariant(i, 'sku', e.target.value)} /></td>
+                                          <td className="p-2"><input type="number" className="w-full p-2 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700" value={v.costPrice} onChange={e => handleUpdateVariant(i, 'costPrice', Number(e.target.value))} /></td>
+                                          <td className="p-2"><input type="number" className="w-full p-2 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold text-indigo-600" value={v.sellingPrice} onChange={e => handleUpdateVariant(i, 'sellingPrice', Number(e.target.value))} /></td>
+                                          <td className="p-2"><input type="number" className="w-full p-2 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-mono" value={v.stockLevel} onChange={e => handleUpdateVariant(i, 'stockLevel', Number(e.target.value))} /></td>
+                                          <td className="p-2 text-center"><button type="button" onClick={() => handleRemoveVariant(i)} className="text-slate-400 hover:text-red-500"><Trash2 size={14}/></button></td>
+                                      </tr>
+                                  ))}
+                              </tbody>
+                          </table>
+                      </div>
                   </div>
-                  
-                  <div className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-[2rem] overflow-hidden shadow-inner">
-                    <table className="w-full text-left text-xs">
-                      <thead>
-                        <tr className="bg-slate-100 dark:bg-slate-900/50 text-slate-600 dark:text-slate-400 font-black uppercase tracking-widest">
-                          <th className="px-6 py-4">{variantType} Name</th>
-                          <th className="px-6 py-4">Custom SKU</th>
-                          <th className="px-6 py-4 w-24">Cost (৳)</th>
-                          <th className="px-6 py-4 w-28">Price (৳)</th>
-                          <th className="px-6 py-4 w-20">Stock</th>
-                          <th className="px-6 py-4 w-20">Min Stock</th>
-                          <th className="px-6 py-4 text-right">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
-                        {formData.variants?.map((v, idx) => (
-                          <tr key={v.id} className="bg-white dark:bg-slate-800 transition-colors">
-                            <td className="px-6 py-3">
-                              <input required placeholder={`e.g. ${variantType === 'Color' ? 'Royal Blue' : 'Extra Large'}`} className="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-transparent focus:border-indigo-300 outline-none dark:text-white text-xs font-medium" value={v.name} onChange={e => handleUpdateVariant(idx, 'name', e.target.value)} />
-                            </td>
-                            <td className="px-6 py-3">
-                              <input required className="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-transparent focus:border-indigo-300 outline-none font-mono dark:text-white text-[10px]" value={v.sku} onChange={e => handleUpdateVariant(idx, 'sku', e.target.value)} />
-                            </td>
-                            <td className="px-6 py-3">
-                              <input type="number" step="0.01" className="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-transparent focus:border-indigo-300 outline-none dark:text-white font-mono" value={v.costPrice} onChange={e => handleUpdateVariant(idx, 'costPrice', Number(e.target.value))} />
-                            </td>
-                            <td className="px-6 py-3">
-                              <input type="number" step="0.01" className="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-transparent focus:border-indigo-300 outline-none font-bold text-indigo-600 dark:text-indigo-400 font-mono" value={v.sellingPrice} onChange={e => handleUpdateVariant(idx, 'sellingPrice', Number(e.target.value))} />
-                            </td>
-                            <td className="px-6 py-3">
-                              <input type="number" className="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-transparent focus:border-indigo-300 outline-none dark:text-white font-mono" value={v.stockLevel} onChange={e => handleUpdateVariant(idx, 'stockLevel', Number(e.target.value))} />
-                            </td>
-                            <td className="px-6 py-3">
-                              <input type="number" className="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-transparent focus:border-indigo-300 outline-none dark:text-white font-mono" value={v.minStockLevel || 5} onChange={e => handleUpdateVariant(idx, 'minStockLevel', Number(e.target.value))} />
-                            </td>
-                            <td className="px-6 py-3 text-right">
-                              <button type="button" onClick={() => handleRemoveVariant(idx)} className="p-2.5 text-slate-400 hover:text-red-500 transition-colors"><Trash2 size={16} /></button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
               )}
 
-              <div className="pt-8 border-t border-slate-100 dark:border-slate-800 flex gap-6">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="px-10 py-5 text-slate-600 dark:text-slate-400 font-bold hover:bg-slate-100 dark:hover:bg-slate-800 rounded-3xl transition-colors">Discard Changes</button>
-                <button type="submit" className="flex-1 py-5 bg-slate-900 dark:bg-indigo-600 text-white rounded-[2rem] font-bold shadow-2xl hover:bg-slate-800 dark:hover:bg-indigo-500 transition-all active:scale-[0.98]">
-                  Commit Update to System Ledger
-                </button>
+              <div className="pt-6 border-t border-slate-100 dark:border-slate-800 flex gap-4">
+                  <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-4 text-slate-500 font-bold bg-slate-100 dark:bg-slate-800 rounded-2xl">Cancel</button>
+                  <button type="submit" className="flex-1 py-4 bg-indigo-600 text-white font-bold rounded-2xl shadow-xl hover:bg-indigo-700 transition-colors">Save Product</button>
               </div>
             </form>
           </div>

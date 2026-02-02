@@ -1,12 +1,13 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Sale, Product, Customer, SaleItem, ProductVariant } from '../types';
+import { Sale, Product, Customer, SaleItem, ProductVariant, Return } from '../types';
 import html2pdf from 'html2pdf.js';
 import { 
-  Plus, Trash2, X, Undo2, Redo2, 
-  Search, ShoppingCart, Package, ArrowRight, Layers, 
-  Minus, ShoppingBag, Tag, AlertTriangle, Hash, User,
-  Filter, Eye, CheckCircle2, Clock, Ban, ChevronLeft, ChevronRight, Truck, Calendar, Printer, RefreshCw, MapPin, ChevronDown, Award, Wallet, RotateCcw, Edit, CreditCard, DollarSign, Phone, Check, Download, ScanBarcode
+  Plus, Trash2, X, ShoppingCart, Package, Minus, ShoppingBag, 
+  Hash, User, Filter, CheckCircle2, Clock, Ban, ChevronLeft, 
+  ChevronRight, Truck, Calendar, Printer, MapPin, ChevronDown, 
+  Award, RotateCcw, Edit, CreditCard, DollarSign, Phone, Check, 
+  Download, Search, Receipt, AlertTriangle, ArrowRight, Percent, FileText
 } from 'lucide-react';
 
 interface SalesProps {
@@ -23,9 +24,10 @@ interface SalesProps {
   canUndo: boolean;
   canRedo: boolean;
   isDirty: boolean;
-  companyProfile: { name: string; address: string; phone: string; email: string; logo?: string; footerMessage?: string; terms?: string };
+  companyProfile: { name: string; address: string; phone: string; email: string; footerMessage?: string; terms?: string; logo?: string };
   notify?: (msg: string, type: 'success' | 'error' | 'info') => void;
   onRequestReturn?: (saleId: string) => void;
+  returns?: Return[];
 }
 
 const CATEGORIES = [
@@ -34,10 +36,9 @@ const CATEGORIES = [
 ];
 
 const EDITABLE_STATUSES = ['Pending', 'Confirmed', 'Delivered', 'Cancelled'];
-const FILTER_STATUSES = ['All', 'Pending', 'Confirmed', 'Delivered', 'Returned', 'Cancelled'];
+const FILTER_STATUSES = ['All', 'Pending', 'Confirmed', 'Delivered', 'Partially Returned', 'Returned', 'Cancelled'];
 const PAYMENT_METHODS = ['Cash', 'Card', 'Mobile Money', 'Bank Transfer', 'Other'];
 
-// Helper for local date
 const getLocalDate = () => {
   const d = new Date();
   d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
@@ -51,115 +52,111 @@ interface PosProductCardProps {
 }
 
 const PosProductCard: React.FC<PosProductCardProps> = ({ product, onAdd, cartItems }) => {
-  const getStockStatus = (stock: number, minStock: number) => {
-    if (stock <= 0) return { label: 'Out of Stock', color: 'text-red-500 bg-red-50 dark:bg-red-500/10' };
-    if (stock <= minStock) return { label: 'Low Stock', color: 'text-amber-500 bg-amber-50 dark:bg-amber-500/10' };
-    return { label: `${stock} In Stock`, color: 'text-slate-500 bg-slate-100 dark:bg-slate-800' };
-  };
-
   const getItemCount = (variantId?: string) => {
     const item = cartItems.find(i => i.productId === product.id && i.variantId === variantId);
     return item ? item.quantity : 0;
   };
 
+  const totalStock = product.hasVariants 
+    ? product.variants?.reduce((acc, v) => acc + v.stockLevel, 0) || 0
+    : product.stockLevel;
+
+  const isLowStock = totalStock <= (product.minStockLevel || 5);
+  const isOutOfStock = totalStock <= 0;
+
   return (
-    <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-indigo-500 dark:hover:border-indigo-500 transition-all group flex flex-col h-full shadow-sm hover:shadow-lg">
-      <div className="flex justify-between items-start mb-3">
-         <div className="w-12 h-12 rounded-xl bg-slate-100 dark:bg-slate-800 overflow-hidden flex items-center justify-center border border-slate-200 dark:border-slate-700">
-           {product.image ? (
-             <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
-           ) : (
-             <Package size={20} className="text-slate-400" />
-           )}
-         </div>
-         <div className="text-right">
-            <p className="font-mono font-bold text-indigo-600 dark:text-indigo-400">
-               ৳{product.hasVariants 
-                 ? Math.min(...(product.variants?.map(v => v.sellingPrice) || [0])).toLocaleString() 
-                 : product.sellingPrice.toLocaleString()}
+    <div 
+        className={`bg-white dark:bg-slate-900 rounded-2xl border transition-all duration-200 group flex flex-col h-full active:scale-[0.98] relative overflow-hidden shadow-sm hover:shadow-xl ${isOutOfStock ? 'opacity-60 grayscale border-slate-200 dark:border-slate-800' : 'border-slate-200 dark:border-slate-800 hover:border-indigo-500 dark:hover:border-indigo-500'}`}
+        onClick={() => !product.hasVariants && !isOutOfStock && onAdd(product)}
+    >
+      <div className="absolute top-2 right-2 z-10 flex gap-1">
+         {getItemCount() > 0 && (
+            <div className="w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px] font-bold shadow-lg animate-in zoom-in">
+                {getItemCount()}
+            </div>
+         )}
+         {isLowStock && !isOutOfStock && (
+             <div className="w-6 h-6 rounded-full bg-amber-500 text-white flex items-center justify-center shadow-lg" title="Low Stock">
+                 <AlertTriangle size={12} fill="currentColor" />
+             </div>
+         )}
+      </div>
+
+      <div className="h-36 w-full bg-slate-50 dark:bg-slate-800 overflow-hidden relative group-hover:brightness-105 transition-all">
+         {product.image ? (
+             <img src={product.image} alt={product.name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
+         ) : (
+             <div className="w-full h-full flex items-center justify-center text-slate-300">
+                <Package size={32} />
+             </div>
+         )}
+         <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-3 pt-8 flex justify-between items-end">
+            <p className="font-mono font-bold text-white text-lg drop-shadow-md">
+                ৳{product.hasVariants 
+                ? Math.min(...(product.variants?.map(v => v.sellingPrice) || [0])).toLocaleString() 
+                : product.sellingPrice.toLocaleString()}
             </p>
+            {isOutOfStock && <span className="text-[10px] font-bold text-white bg-red-500 px-2 py-0.5 rounded-full">SOLD OUT</span>}
          </div>
       </div>
       
-      <div className="flex-1 mb-4">
-        <h4 className="font-bold text-slate-800 dark:text-white text-sm leading-tight line-clamp-2" title={product.name}>{product.name}</h4>
-        <p className="text-[10px] text-slate-400 font-mono mt-1">{product.sku}</p>
-      </div>
+      <div className="p-4 flex-1 flex flex-col gap-2">
+        <div className="flex-1">
+            <h4 className="font-bold text-slate-800 dark:text-slate-100 text-sm leading-tight line-clamp-2" title={product.name}>{product.name}</h4>
+            <p className="text-[10px] text-slate-400 font-mono mt-1">{product.sku}</p>
+        </div>
 
-      {!product.hasVariants ? (
-        <div className="space-y-3 mt-auto">
-           <div className={`text-[10px] font-bold px-2 py-1 rounded w-fit ${getStockStatus(product.stockLevel, product.minStockLevel || 5).color}`}>
-             {getStockStatus(product.stockLevel, product.minStockLevel || 5).label}
-           </div>
-           <button 
-             onClick={() => onAdd(product)}
-             disabled={product.stockLevel <= 0}
-             className="w-full py-2.5 bg-slate-900 dark:bg-indigo-600 text-white rounded-xl font-bold text-xs hover:bg-slate-800 dark:hover:bg-indigo-500 active:scale-95 disabled:opacity-50 disabled:active:scale-100 transition-all flex items-center justify-center gap-2"
-           >
-             {getItemCount() > 0 ? (
-               <><div className="w-4 h-4 rounded-full bg-white text-black flex items-center justify-center text-[9px]">{getItemCount()}</div> Add More</>
-             ) : (
-               <><Plus size={14}/> Add to Bag</>
-             )}
-           </button>
+        <div className="mt-auto">
+            {product.hasVariants ? (
+                <div className="flex flex-wrap gap-1.5 mt-1">
+                    {product.variants?.map(v => (
+                        <button
+                            key={v.id}
+                            onClick={(e) => { e.stopPropagation(); onAdd(product, v); }}
+                            disabled={v.stockLevel <= 0}
+                            className="px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 rounded-lg text-[10px] font-bold hover:bg-indigo-600 hover:text-white transition-colors disabled:opacity-30 border border-slate-200 dark:border-slate-700 disabled:cursor-not-allowed"
+                        >
+                            {v.name}
+                        </button>
+                    ))}
+                </div>
+            ) : (
+                <div className="flex justify-between items-center text-[10px] font-bold text-slate-500">
+                    <span className="text-green-600">
+                        {isOutOfStock ? 'Out of Stock' : `${product.stockLevel} Available`}
+                    </span>
+                    {!isOutOfStock && (
+                        <div className="w-6 h-6 rounded-full bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Plus size={14} />
+                        </div>
+                    )}
+                </div>
+            )}
         </div>
-      ) : (
-        <div className="space-y-2 mt-auto">
-          <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Variants</p>
-          <div className="space-y-2 max-h-32 overflow-y-auto custom-scrollbar pr-1">
-            {product.variants?.map(v => (
-              <div key={v.id} className="flex justify-between items-center p-2 bg-slate-50 dark:bg-slate-800 rounded-lg text-xs">
-                 <div className="min-w-0 flex-1 mr-2">
-                   <p className="font-bold truncate" title={v.name}>{v.name}</p>
-                   <p className="text-[9px] text-slate-500">Stock: {v.stockLevel}</p>
-                 </div>
-                 <div className="flex items-center gap-2">
-                   {getItemCount(v.id) > 0 && (
-                     <span className="text-[9px] font-bold text-indigo-500">{getItemCount(v.id)} in cart</span>
-                   )}
-                   <button 
-                     onClick={() => onAdd(product, v)}
-                     disabled={v.stockLevel <= 0}
-                     className="p-1.5 bg-white dark:bg-slate-700 hover:bg-indigo-600 hover:text-white dark:hover:bg-indigo-500 rounded-lg border border-slate-200 dark:border-slate-600 transition-colors disabled:opacity-30"
-                   >
-                     <Plus size={12}/>
-                   </button>
-                 </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      </div>
     </div>
   );
 };
 
 export const Sales: React.FC<SalesProps> = ({ 
   sales, products, customers, onAddSale, onUpdateSale, onDeleteSale, onAddCustomer,
-  onUndo, onRedo, canUndo, canRedo, companyProfile, notify, onRequestReturn
+  companyProfile, notify, onRequestReturn, returns
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
   
-  // View Details Modal State
   const [viewingOrder, setViewingOrder] = useState<Sale | null>(null);
-
-  const [saleToDeleteId, setSaleToDeleteId] = useState<string | null>(null);
-  const [selectedOrder, setSelectedOrder] = useState<Sale | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
+  const itemsPerPage = 8;
   
   const [selectedCategory, setSelectedCategory] = useState('All');
-  const [selectedStatusFilter, setSelectedStatusFilter] = useState('All');
+  const [selectedStatusTab, setSelectedStatusTab] = useState('All');
   const [selectedDateFilter, setSelectedDateFilter] = useState('');
   const [productSearch, setProductSearch] = useState('');
   const [customerSearch, setCustomerSearch] = useState('');
   const [ledgerSearch, setLedgerSearch] = useState('');
   const [isCustomerDropdownOpen, setIsCustomerDropdownOpen] = useState(false);
   const [mobileTab, setMobileTab] = useState<'catalog' | 'cart'>('catalog');
-  
-  // POS Cash Management
-  const [amountTendered, setAmountTendered] = useState<number>(0);
   
   const customerDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -183,7 +180,7 @@ export const Sales: React.FC<SalesProps> = ({
     customerId: '',
     items: [],
     discountAmount: 0,
-    deliveryCharge: 0,
+    deliveryCharge: 0, 
     notes: '',
     status: 'Pending',
     paymentMethod: 'Cash'
@@ -225,14 +222,14 @@ export const Sales: React.FC<SalesProps> = ({
 
   const filteredSales = useMemo(() => {
     return sales.filter(s => {
-      const matchStatus = selectedStatusFilter === 'All' ? true : s.status === selectedStatusFilter;
+      const matchStatus = selectedStatusTab === 'All' ? true : s.status === selectedStatusTab;
       const matchDate = selectedDateFilter ? s.date.startsWith(selectedDateFilter) : true;
       const matchSearch = ledgerSearch ? 
         s.customerName.toLowerCase().includes(ledgerSearch.toLowerCase()) || 
         s.id.toLowerCase().includes(ledgerSearch.toLowerCase()) : true;
       return matchStatus && matchDate && matchSearch;
     });
-  }, [sales, selectedStatusFilter, selectedDateFilter, ledgerSearch]);
+  }, [sales, selectedStatusTab, selectedDateFilter, ledgerSearch]);
 
   const paginatedSales = useMemo(() => {
     const start = (currentPage - 1) * itemsPerPage;
@@ -241,11 +238,9 @@ export const Sales: React.FC<SalesProps> = ({
 
   const totalPages = Math.ceil(filteredSales.length / itemsPerPage);
 
-  // --- BARCODE SCANNING LOGIC ---
   const handleProductSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && productSearch.trim()) {
       e.preventDefault();
-      // Try to find exact SKU match first (common for barcodes)
       const exactMatch = products.find(p => 
         p.sku.toLowerCase() === productSearch.toLowerCase() ||
         p.name.toLowerCase() === productSearch.toLowerCase() ||
@@ -254,14 +249,11 @@ export const Sales: React.FC<SalesProps> = ({
 
       if (exactMatch) {
         if (exactMatch.hasVariants) {
-           // If variant SKU matched, add that specific variant
            const matchedVariant = exactMatch.variants?.find(v => v.sku.toLowerCase() === productSearch.toLowerCase());
            if (matchedVariant) {
              addItemToSale(exactMatch, matchedVariant);
              if (notify) notify(`Added ${exactMatch.name} (${matchedVariant.name}) to cart`, 'success');
            } else {
-             // If product matched but it has variants, we can't auto-add without variant selection unless logic changes.
-             // For now, let's just clear search to reset. In a real scanner scenario, unique SKUs for variants are key.
              if(notify) notify('Please select a variant for this product.', 'info');
              return; 
            }
@@ -269,7 +261,7 @@ export const Sales: React.FC<SalesProps> = ({
            addItemToSale(exactMatch);
            if (notify) notify(`Added ${exactMatch.name} to cart`, 'success');
         }
-        setProductSearch(''); // Clear for next scan
+        setProductSearch(''); 
       } else {
         if(notify) notify('No product found with that SKU/Name', 'error');
       }
@@ -342,7 +334,6 @@ export const Sales: React.FC<SalesProps> = ({
     setNewSale({ ...newSale, items });
   };
 
-  // Helper to validate stock before changing status to Delivered
   const validateStockForDelivery = (items: SaleItem[]) => {
     for (const item of items) {
         const product = products.find(p => p.id === item.productId);
@@ -373,7 +364,7 @@ export const Sales: React.FC<SalesProps> = ({
 
     const saleItems = newSale.items as SaleItem[];
     const subtotal = saleItems.reduce((sum, item) => sum + item.total, 0);
-    const total = Math.max(0, subtotal - (newSale.discountAmount || 0) + (newSale.deliveryCharge || 0));
+    const total = Math.max(0, subtotal - (newSale.discountAmount || 0));
     const cost = saleItems.reduce((sum, item) => sum + (item.unitCost * item.quantity), 0);
     
     const finalSaleData: Sale = {
@@ -383,7 +374,7 @@ export const Sales: React.FC<SalesProps> = ({
       customerName: selectedCustomer?.name || 'Unknown',
       items: saleItems, 
       discountAmount: newSale.discountAmount || 0,
-      deliveryCharge: newSale.deliveryCharge || 0,
+      deliveryCharge: 0, 
       totalAmount: total, 
       totalCost: cost, 
       profit: total - cost,
@@ -407,7 +398,6 @@ export const Sales: React.FC<SalesProps> = ({
     setCustomerSearch('');
     setEditingSaleId(null);
     setMobileTab('catalog');
-    setAmountTendered(0);
   };
 
   const handleEditOrder = (sale: Sale) => {
@@ -417,8 +407,7 @@ export const Sales: React.FC<SalesProps> = ({
       items: [...sale.items]
     });
     setCustomerSearch(sale.customerName);
-    setSelectedOrder(null);
-    setViewingOrder(null); // Close detail view if open
+    setViewingOrder(null); 
     setIsModalOpen(true);
   };
 
@@ -430,7 +419,6 @@ export const Sales: React.FC<SalesProps> = ({
       return;
     }
 
-    // Safety Check: If moving from Pending to Delivered, verify stock exists
     if (sale.status === 'Pending' && newStatus === 'Delivered') {
         const check = validateStockForDelivery(sale.items);
         if (!check.valid) {
@@ -443,9 +431,6 @@ export const Sales: React.FC<SalesProps> = ({
     if (sale.status !== newStatus) {
         const updatedSale = { ...sale, status: newStatus };
         onUpdateSale(updatedSale);
-        if (selectedOrder && selectedOrder.id === sale.id) {
-            setSelectedOrder(updatedSale);
-        }
         if (viewingOrder && viewingOrder.id === sale.id) {
             setViewingOrder(updatedSale);
         }
@@ -454,8 +439,6 @@ export const Sales: React.FC<SalesProps> = ({
 
   const generateInvoiceHTML = (order: Sale) => {
     const customer = customers.find(c => c.id === order.customerId);
-    const logoHtml = companyProfile.logo ? `<img src="${companyProfile.logo}" style="max-height: 60px; margin-bottom: 10px;" alt="Logo"/>` : '';
-    
     return `
       <html>
         <head>
@@ -489,8 +472,8 @@ export const Sales: React.FC<SalesProps> = ({
           <div class="invoice-box">
             <div class="header-container">
               <div class="company-info">
-                ${logoHtml}
-                ${!companyProfile.logo ? `<h1>${companyProfile.name}</h1>` : `<h1>${companyProfile.name}</h1>`}
+                ${companyProfile.logo ? `<img src="${companyProfile.logo}" style="max-width:150px; margin-bottom: 10px;" />` : ''}
+                <h1>${companyProfile.name}</h1>
                 <p>${companyProfile.address}</p>
                 <p>${companyProfile.phone} | ${companyProfile.email}</p>
               </div>
@@ -540,11 +523,6 @@ export const Sales: React.FC<SalesProps> = ({
                    <span>Discount</span>
                    <span>-৳${order.discountAmount.toLocaleString()}</span>
                  </div>` : ''}
-                 ${order.deliveryCharge > 0 ? `
-                 <div class="row">
-                   <span style="color: #666;">Delivery</span>
-                   <span>+৳${order.deliveryCharge.toLocaleString()}</span>
-                 </div>` : ''}
                  <div class="row grand-total">
                    <span>Total</span>
                    <span>৳${order.totalAmount.toLocaleString()}</span>
@@ -557,6 +535,44 @@ export const Sales: React.FC<SalesProps> = ({
             <div class="footer">
               <p>${companyProfile.footerMessage || 'Thank you for your business.'}</p>
               ${companyProfile.terms ? `<p class="terms">${companyProfile.terms}</p>` : ''}
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+  };
+
+  const generateCreditNoteHTML = (order: Sale, refundedAmount: number) => {
+    return `
+      <html>
+        <head>
+          <title>Credit Note #${order.id.slice(-6)}</title>
+          <style>
+            .box { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 40px; color: #333; max-width: 800px; margin: 0 auto; line-height: 1.5; background: white; }
+            .header { border-bottom: 2px solid #ef4444; padding-bottom: 20px; margin-bottom: 40px; text-align: center; }
+            .header h1 { margin: 0; font-size: 24px; text-transform: uppercase; color: #ef4444; }
+            .details { display: flex; justify-content: space-between; margin-bottom: 30px; }
+            .amount-box { border: 2px solid #ef4444; padding: 20px; text-align: center; margin: 30px 0; background: #fef2f2; }
+            .amount { font-size: 32px; font-weight: bold; color: #ef4444; }
+            .footer { text-align: center; margin-top: 50px; font-size: 12px; color: #888; }
+          </style>
+        </head>
+        <body>
+          <div class="box">
+            <div class="header">
+              <h1>Credit Note (Refund)</h1>
+              <p>${companyProfile.name}</p>
+            </div>
+            <div class="details">
+               <p><strong>Original Order:</strong> #${order.id.slice(-6)}</p>
+               <p><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
+            </div>
+            <div class="amount-box">
+               <p>REFUND AMOUNT</p>
+               <div class="amount">৳${refundedAmount.toLocaleString()}</div>
+            </div>
+            <div class="footer">
+              <p>This credit note confirms the refund has been processed.</p>
             </div>
           </div>
         </body>
@@ -578,9 +594,9 @@ export const Sales: React.FC<SalesProps> = ({
     const opt = {
       margin: 10,
       filename: `Invoice_${order.id.slice(-6)}.pdf`,
-      image: { type: 'jpeg', quality: 0.98 },
+      image: { type: 'jpeg' as const, quality: 0.98 },
       html2canvas: { scale: 2, useCORS: true, logging: false },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const }
     };
 
     html2pdf().from(element).set(opt).save().then(() => {
@@ -592,7 +608,7 @@ export const Sales: React.FC<SalesProps> = ({
   };
 
   const currentSubtotal = newSale.items?.reduce((a, b) => a + b.total, 0) || 0;
-  const currentTotal = Math.max(0, currentSubtotal - (newSale.discountAmount || 0) + (newSale.deliveryCharge || 0));
+  const currentTotal = Math.max(0, currentSubtotal - (newSale.discountAmount || 0));
 
   const getStatusStyle = (status: string) => {
     switch(status) {
@@ -600,6 +616,7 @@ export const Sales: React.FC<SalesProps> = ({
       case 'Delivered': return 'bg-green-100 text-green-700 border-green-200 dark:bg-green-500/10 dark:text-green-400 dark:border-green-500/20';
       case 'Pending': return 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20';
       case 'Returned': return 'bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-500/10 dark:text-purple-400 dark:border-purple-500/20';
+      case 'Partially Returned': return 'bg-fuchsia-100 text-fuchsia-700 border-fuchsia-200 dark:bg-fuchsia-500/10 dark:text-fuchsia-400 dark:border-fuchsia-500/20';
       case 'Cancelled': return 'bg-red-100 text-red-700 border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20';
       default: return 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700';
     }
@@ -611,6 +628,7 @@ export const Sales: React.FC<SalesProps> = ({
       case 'Delivered': return <Truck size={10} />;
       case 'Pending': return <Clock size={10} />;
       case 'Returned': return <RotateCcw size={10} />;
+      case 'Partially Returned': return <RotateCcw size={10} />;
       case 'Cancelled': return <Ban size={10} />;
       default: return null;
     }
@@ -620,43 +638,9 @@ export const Sales: React.FC<SalesProps> = ({
     return customers.find(c => c.id === customerId);
   };
 
-  // Helper to draw status timeline
-  const StatusTimeline = ({ status }: { status: Sale['status'] }) => {
-    const steps = ['Pending', 'Confirmed', 'Delivered'];
-    const currentIdx = steps.indexOf(status);
-    const isCancelled = status === 'Cancelled';
-    const isReturned = status === 'Returned';
-
-    if (isCancelled || isReturned) return null; // Don't show timeline for abnormal states
-
-    return (
-      <div className="flex items-center w-full max-w-sm mx-auto mb-6">
-        {steps.map((step, idx) => {
-          const isCompleted = idx <= currentIdx;
-          const isLast = idx === steps.length - 1;
-          return (
-            <React.Fragment key={step}>
-              <div className="flex flex-col items-center relative">
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold z-10 transition-all ${isCompleted ? 'bg-green-500 text-white shadow-lg shadow-green-500/30' : 'bg-slate-100 dark:bg-slate-800 text-slate-400'}`}>
-                  {isCompleted ? <Check size={14} strokeWidth={3} /> : idx + 1}
-                </div>
-                <span className={`absolute top-10 text-[9px] font-bold uppercase tracking-wider ${isCompleted ? 'text-green-600 dark:text-green-400' : 'text-slate-400'}`}>
-                  {step}
-                </span>
-              </div>
-              {!isLast && (
-                <div className={`flex-1 h-1 mx-2 rounded-full ${idx < currentIdx ? 'bg-green-500' : 'bg-slate-100 dark:bg-slate-800'}`} />
-              )}
-            </React.Fragment>
-          )
-        })}
-      </div>
-    );
-  };
-
   return (
     <div className="space-y-6">
-      {/* Ledger Header */}
+      {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h2 className="text-4xl font-serif font-bold text-slate-900 dark:text-white tracking-tight">Orders</h2>
@@ -670,7 +654,7 @@ export const Sales: React.FC<SalesProps> = ({
         </div>
       </div>
 
-      {/* Ledger Filters */}
+      {/* Filters */}
       <div className="flex flex-col lg:flex-row gap-4">
         <div className="relative flex-1 group">
           <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={18} />
@@ -683,19 +667,17 @@ export const Sales: React.FC<SalesProps> = ({
         </div>
         
         <div className="flex gap-2 overflow-x-auto pb-2 lg:pb-0">
-           {/* Status Filter */}
            <div className="relative min-w-[140px]">
              <select 
                className="w-full pl-4 pr-8 py-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-[2rem] outline-none focus:ring-2 focus:ring-indigo-500/10 dark:text-white font-bold text-xs appearance-none cursor-pointer"
-               value={selectedStatusFilter}
-               onChange={(e) => setSelectedStatusFilter(e.target.value)}
+               value={selectedStatusTab}
+               onChange={(e) => setSelectedStatusTab(e.target.value)}
              >
                {FILTER_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
              </select>
              <Filter size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
            </div>
 
-           {/* Date Filter */}
            <div className="relative min-w-[140px]">
              <input 
                type="date"
@@ -707,7 +689,7 @@ export const Sales: React.FC<SalesProps> = ({
         </div>
       </div>
 
-      {/* Sales List / Ledger Table */}
+      {/* Table */}
       <div className="bg-white dark:bg-slate-900/60 rounded-[2.5rem] shadow-sm border border-slate-200 dark:border-slate-800 overflow-visible backdrop-blur-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm whitespace-nowrap">
@@ -767,7 +749,6 @@ export const Sales: React.FC<SalesProps> = ({
                          )}
                        </button>
                        
-                       {/* Enhanced Dropdown for Status Change */}
                        {(sale.status === 'Pending' || sale.status === 'Delivered' || sale.status === 'Confirmed') && (
                          <div className="absolute left-0 top-full mt-2 bg-white dark:bg-slate-900 shadow-2xl rounded-xl border border-slate-100 dark:border-slate-800 p-1.5 z-50 hidden group-hover/status:block w-40 animate-in slide-in-from-top-2">
                            <div className="text-[9px] font-bold text-slate-400 px-2 py-1 uppercase tracking-wider mb-1">Update Status</div>
@@ -839,7 +820,6 @@ export const Sales: React.FC<SalesProps> = ({
         <div className="fixed inset-0 z-[110] bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
            <div className="bg-white dark:bg-slate-900 w-full max-w-4xl rounded-[2.5rem] shadow-2xl border border-slate-200 dark:border-slate-800 flex flex-col max-h-[90vh] overflow-hidden animate-in zoom-in-95 duration-300">
               
-              {/* Header */}
               <div className="px-8 py-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 flex justify-between items-center shrink-0">
                  <div className="flex items-center gap-4">
                     <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl flex items-center justify-center text-indigo-600 dark:text-indigo-400">
@@ -861,11 +841,7 @@ export const Sales: React.FC<SalesProps> = ({
               </div>
 
               <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
-                 {/* VISUAL TIMELINE */}
-                 <StatusTimeline status={viewingOrder.status} />
-
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
-                    {/* Customer Card */}
                     <div className="bg-slate-50 dark:bg-slate-800/50 rounded-3xl p-6 border border-slate-100 dark:border-slate-700/50">
                        <h4 className="text-xs font-bold uppercase text-slate-400 tracking-widest mb-4 flex items-center gap-2"><User size={14}/> Customer Details</h4>
                        <div className="space-y-3">
@@ -881,16 +857,9 @@ export const Sales: React.FC<SalesProps> = ({
                           <div className="flex items-start gap-2 text-xs text-slate-500">
                              <MapPin size={12} className="mt-0.5" /> {getOrderCustomer(viewingOrder.id, viewingOrder.customerId)?.address || 'No Address'}
                           </div>
-                          {getOrderCustomer(viewingOrder.id, viewingOrder.customerId) && (
-                             <div className="pt-3 mt-3 border-t border-slate-200 dark:border-slate-700 flex justify-between items-center text-xs">
-                                <span className="text-slate-400">Lifetime Value</span>
-                                <span className="font-mono font-bold text-indigo-500">৳{getOrderCustomer(viewingOrder.id, viewingOrder.customerId)?.totalSpent.toLocaleString()}</span>
-                             </div>
-                          )}
                        </div>
                     </div>
 
-                    {/* Financial Summary Card */}
                     <div className="bg-slate-50 dark:bg-slate-800/50 rounded-3xl p-6 border border-slate-100 dark:border-slate-700/50">
                        <h4 className="text-xs font-bold uppercase text-slate-400 tracking-widest mb-4 flex items-center gap-2"><CreditCard size={14}/> Financials</h4>
                        <div className="space-y-2 text-sm">
@@ -902,10 +871,6 @@ export const Sales: React.FC<SalesProps> = ({
                              <span>Discount</span>
                              <span className="font-mono text-red-400">-৳{viewingOrder.discountAmount.toLocaleString()}</span>
                           </div>
-                          <div className="flex justify-between text-slate-500">
-                             <span>Delivery</span>
-                             <span className="font-mono">৳{viewingOrder.deliveryCharge.toLocaleString()}</span>
-                          </div>
                           <div className="pt-3 mt-3 border-t border-slate-200 dark:border-slate-700 flex justify-between items-center">
                              <span className="font-bold text-slate-800 dark:text-white">Grand Total</span>
                              <div className="text-right">
@@ -913,18 +878,10 @@ export const Sales: React.FC<SalesProps> = ({
                                 <span className="text-[10px] text-slate-400 uppercase font-black tracking-widest">{viewingOrder.paymentMethod || 'Cash'}</span>
                              </div>
                           </div>
-                          {/* Admin Only Profit View */}
-                          <div className="mt-4 bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200 dark:border-slate-700 flex justify-between items-center text-xs">
-                             <span className="font-bold text-slate-400 flex items-center gap-1"><DollarSign size={12}/> Net Profit</span>
-                             <span className={`font-mono font-bold ${viewingOrder.profit >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                                {viewingOrder.profit >= 0 ? '+' : ''}৳{viewingOrder.profit.toLocaleString()}
-                             </span>
-                          </div>
                        </div>
                     </div>
                  </div>
 
-                 {/* Line Items Table */}
                  <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-3xl overflow-hidden mb-6">
                     <table className="w-full text-left text-sm">
                        <thead className="bg-slate-50 dark:bg-slate-800 text-xs text-slate-500 font-bold uppercase tracking-wider">
@@ -959,10 +916,8 @@ export const Sales: React.FC<SalesProps> = ({
                  )}
               </div>
 
-              {/* Actions Footer */}
               <div className="p-6 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 flex justify-between items-center gap-4 shrink-0">
                  <div className="flex gap-2">
-                    {/* Quick Status Toggles */}
                     {['Confirmed', 'Delivered'].map(status => (
                         status !== viewingOrder.status && (
                             <button 
@@ -1015,7 +970,6 @@ export const Sales: React.FC<SalesProps> = ({
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/90 backdrop-blur-md p-4">
           <div className="bg-slate-100 dark:bg-slate-900 w-full h-full max-w-[1600px] rounded-[2rem] overflow-hidden flex flex-col shadow-2xl border border-slate-200 dark:border-slate-800">
             
-            {/* Mobile Tab Switcher - Visible only on mobile */}
             <div className="md:hidden flex p-4 pb-0 gap-2 bg-slate-100 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shrink-0">
               <button 
                 onClick={() => setMobileTab('catalog')} 
@@ -1048,18 +1002,15 @@ export const Sales: React.FC<SalesProps> = ({
                       <div className="relative">
                           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                           <input 
-                            className="pl-9 pr-4 py-3 bg-slate-100 dark:bg-slate-800 rounded-xl text-sm w-full md:w-64 outline-none border border-transparent focus:border-indigo-500 transition-all placeholder:text-xs" 
-                            placeholder="Scan Barcode or Search SKU..."
+                            className="pl-9 pr-4 py-3 bg-slate-100 dark:bg-slate-800 rounded-xl text-sm w-full md:w-64 outline-none border border-transparent focus:border-indigo-500 transition-all" 
+                            placeholder="Search products..."
                             value={productSearch}
                             onChange={e => setProductSearch(e.target.value)}
                             onKeyDown={handleProductSearchKeyDown}
-                            autoFocus
                           />
-                          <ScanBarcode className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 opacity-50" size={16}/>
                       </div>
                     </div>
                     
-                    {/* Category Pills */}
                     <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
                       {CATEGORIES.map(c => (
                         <button
@@ -1105,7 +1056,6 @@ export const Sales: React.FC<SalesProps> = ({
                     </div>
                 </div>
                 
-                {/* Customer Selection */}
                 <div className="p-6 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/30">
                     <div className="relative" ref={customerDropdownRef}>
                       <div 
@@ -1167,7 +1117,6 @@ export const Sales: React.FC<SalesProps> = ({
                     )}
                 </div>
 
-                {/* Cart Items */}
                 <div className="flex-1 overflow-y-auto p-6 space-y-4">
                   {newSale.items?.length === 0 ? (
                       <div className="h-full flex flex-col items-center justify-center text-slate-400 opacity-50 space-y-4">
@@ -1211,7 +1160,6 @@ export const Sales: React.FC<SalesProps> = ({
                   )}
                 </div>
 
-                {/* Totals & Checkout */}
                 <div className="p-6 bg-slate-50 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 space-y-4 shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)] z-20">
                     <div className="space-y-2 text-sm">
                       <div className="flex justify-between text-slate-500">
@@ -1227,17 +1175,7 @@ export const Sales: React.FC<SalesProps> = ({
                           onChange={e => setNewSale({...newSale, discountAmount: Number(e.target.value)})}
                         />
                       </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-slate-500">Delivery</span>
-                        <input 
-                          type="number" 
-                          className="w-24 text-right bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-xs outline-none focus:border-indigo-500 transition-colors"
-                          value={newSale.deliveryCharge}
-                          onChange={e => setNewSale({...newSale, deliveryCharge: Number(e.target.value)})}
-                        />
-                      </div>
                       
-                      {/* Payment Method Selector */}
                       <div className="flex justify-between items-center">
                         <span className="text-slate-500">Paid Via</span>
                         <select 
@@ -1248,27 +1186,6 @@ export const Sales: React.FC<SalesProps> = ({
                           {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
                         </select>
                       </div>
-
-                      {/* Cash Tendered Logic */}
-                      {newSale.paymentMethod === 'Cash' && (
-                        <div className="bg-slate-100 dark:bg-slate-800 p-3 rounded-xl space-y-2 animate-in fade-in">
-                          <div className="flex justify-between items-center">
-                            <span className="text-xs font-bold text-slate-500">Amount Tendered</span>
-                            <input 
-                              type="number" 
-                              className="w-24 text-right bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-indigo-500 font-bold"
-                              value={amountTendered}
-                              onChange={e => setAmountTendered(Number(e.target.value))}
-                            />
-                          </div>
-                          <div className="flex justify-between items-center border-t border-slate-200 dark:border-slate-700 pt-2">
-                            <span className="text-xs font-bold text-slate-500">Change Due</span>
-                            <span className={`font-mono font-bold text-sm ${amountTendered - currentTotal >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                              ৳{Math.max(0, amountTendered - currentTotal).toLocaleString()}
-                            </span>
-                          </div>
-                        </div>
-                      )}
 
                       <div className="flex justify-between font-black text-2xl text-slate-900 dark:text-white pt-4 border-t border-slate-200 dark:border-slate-800">
                         <span>Total</span>
@@ -1292,7 +1209,6 @@ export const Sales: React.FC<SalesProps> = ({
         </div>
       )}
 
-      {/* Quick Add Customer Modal */}
       {isQuickAddOpen && (
         <div className="fixed inset-0 z-[160] flex items-center justify-center bg-slate-950/80 p-4">
            <div className="bg-white dark:bg-slate-900 rounded-2xl p-8 w-full max-w-md shadow-2xl animate-in zoom-in-95">

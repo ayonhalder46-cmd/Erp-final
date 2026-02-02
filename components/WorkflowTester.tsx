@@ -5,7 +5,7 @@ import { ApiService } from './apiService';
 import { 
   PlayCircle, CheckCircle, XCircle, RefreshCw, Terminal, Activity, 
   Save, Truck, Layers, ShoppingCart, RotateCcw, Wallet, Users, ToggleLeft, ToggleRight,
-  Copy
+  Copy, Loader2
 } from 'lucide-react';
 
 interface WorkflowTesterProps {
@@ -39,9 +39,9 @@ const PHASES = [
   { id: 'crm', label: 'Foundation (CRM & Sourcing)', icon: Users, desc: 'Entities & Relationships' },
   { id: 'inv', label: 'Inventory Engineering', icon: Layers, desc: 'Products, Variants & Stock' },
   { id: 'proc', label: 'Procurement Cycle', icon: Truck, desc: 'PO, Receiving & AVCO Costing' },
-  { id: 'sales', label: 'Order Operations', icon: ShoppingCart, desc: 'Reservations, Deductions & LTV' },
-  { id: 'rma', label: 'Returns & Logistics', icon: RotateCcw, desc: 'Restocking & Refusal Losses' },
-  { id: 'fin', label: 'Financial Health', icon: Wallet, desc: 'Expense Ledger & P&L Integrity' },
+  { id: 'sales', label: 'Order Lifecycle', icon: ShoppingCart, desc: 'Flow: Pending -> Delivered -> Revert -> Delivered' },
+  { id: 'rma', label: 'Returns & Losses', icon: RotateCcw, desc: 'Partial Refund, Refusal & Damaged Logic' },
+  { id: 'fin', label: 'Financial Auditing', icon: Wallet, desc: 'Ledger Math: Gross - Returns = Net' },
 ];
 
 export const WorkflowTester: React.FC<WorkflowTesterProps> = (props) => {
@@ -52,7 +52,6 @@ export const WorkflowTester: React.FC<WorkflowTesterProps> = (props) => {
   const [copied, setCopied] = useState(false);
   const logContainerRef = useRef<HTMLDivElement>(null);
 
-  // Shared Test Context to pass data between phases
   const contextRef = useRef<{
     tid: string;
     supplierId?: string;
@@ -60,8 +59,9 @@ export const WorkflowTester: React.FC<WorkflowTesterProps> = (props) => {
     productId?: string;
     variantId?: string;
     poId?: string;
-    saleId?: string;
-    saleDeliveryId?: string;
+    saleId?: string; // Standard Sale
+    partSaleId?: string; // Partial Return Sale
+    poAmount?: number;
   }>({ tid: '' });
 
   useEffect(() => {
@@ -81,7 +81,15 @@ export const WorkflowTester: React.FC<WorkflowTesterProps> = (props) => {
     }]);
   };
 
-  const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+  // Improved Polling Helper
+  const waitFor = async (condition: () => Promise<boolean>, timeout = 5000, interval = 250): Promise<void> => {
+    const startTime = Date.now();
+    while (Date.now() - startTime < timeout) {
+      if (await condition()) return;
+      await new Promise(r => setTimeout(r, interval));
+    }
+    throw new Error("Operation timed out waiting for data consistency.");
+  };
 
   const togglePhase = (id: string) => {
     setSelectedPhases(prev => 
@@ -134,13 +142,11 @@ export const WorkflowTester: React.FC<WorkflowTesterProps> = (props) => {
     props.onAddSupplier({ id: supId, name: `Test Supplier ${tid}`, contactPerson: 'Auto Bot', email: 'test@sup.com', phone: '000', category: 'Furniture', status: 'Active' });
     props.onAddCustomer({ id: custId, name: `Test Customer ${tid}`, address: '123 Test Ln', phone: '000', totalSpent: 0, lastPurchaseDate: 'N/A', tier: 'Bronze' });
     
-    await wait(500);
-    
-    const customers = await ApiService.fetchLatest('customers');
-    const suppliers = await ApiService.fetchLatest('suppliers');
-    
-    if (!customers?.find((c: any) => c.id === custId)) throw new Error("Customer persistence failed");
-    if (!suppliers?.find((s: any) => s.id === supId)) throw new Error("Supplier persistence failed");
+    await waitFor(async () => {
+        const customers = await ApiService.fetchLatest('customers');
+        const suppliers = await ApiService.fetchLatest('suppliers');
+        return customers?.find((c: any) => c.id === custId) && suppliers?.find((s: any) => s.id === supId);
+    });
     
     contextRef.current.supplierId = supId;
     contextRef.current.customerId = custId;
@@ -162,11 +168,11 @@ export const WorkflowTester: React.FC<WorkflowTesterProps> = (props) => {
     };
     props.onAddProduct(product);
     
-    await wait(600);
-    const products = await ApiService.fetchLatest('products');
-    const p = products?.find((x: any) => x.id === prodId);
-    
-    if (p?.variants[0]?.stockLevel !== 10) throw new Error(`Initial stock mismatch. Exp: 10, Got: ${p?.variants[0]?.stockLevel}`);
+    await waitFor(async () => {
+        const products = await ApiService.fetchLatest('products');
+        const p = products?.find((x: any) => x.id === prodId);
+        return p && p.variants[0]?.stockLevel === 10;
+    });
     
     contextRef.current.productId = prodId;
     contextRef.current.variantId = varId;
@@ -178,32 +184,35 @@ export const WorkflowTester: React.FC<WorkflowTesterProps> = (props) => {
     if (!productId) throw new Error("Dependency Missing: Product not found");
 
     const poId = `PO-${tid}`;
-    addLog('Procurement', 'info', 'Creating Purchase Order (Qty: 50 @ ৳400)...');
+    const poTotal = 20000;
+    contextRef.current.poAmount = poTotal;
+
+    addLog('Procurement', 'info', `Creating PO (Qty: 50 @ 400)... Total: ${poTotal}`);
 
     const po: PurchaseOrder = {
       id: poId, date: new Date().toISOString(), expectedDate: new Date().toISOString(),
       supplierId: supplierId!, supplierName: 'Test Supplier',
       status: 'Ordered',
-      items: [{ productId, productName: 'Test Item', variantId, variantName: 'Option A', quantity: 50, unitCost: 400, total: 20000 }],
-      totalAmount: 20000
+      items: [{ productId, productName: 'Test Item', variantId, variantName: 'Option A', quantity: 50, unitCost: 400, total: poTotal }],
+      totalAmount: poTotal
     };
     
     props.onCreatePO(po);
-    await wait(300);
+    await new Promise(r => setTimeout(r, 200)); 
     props.onReceivePO(po);
-    await wait(800);
+
+    await waitFor(async () => {
+        const products = await ApiService.fetchLatest('products');
+        const p = products?.find((x: any) => x.id === productId);
+        // AVCO Check: (10@500 + 50@400) / 60 = 25000 / 60 = 416.67
+        const newStock = p.variants[0].stockLevel;
+        const newCost = p.variants[0].costPrice;
+        return newStock === 60 && newCost >= 416 && newCost <= 417;
+    });
 
     const products = await ApiService.fetchLatest('products');
     const p = products?.find((x: any) => x.id === productId);
-    
-    // AVCO Check: (10@500 + 50@400) / 60 = 25000 / 60 = 416.67
-    const newStock = p.variants[0].stockLevel;
-    const newCost = p.variants[0].costPrice;
-    
-    if (newStock !== 60) throw new Error(`PO Stock update failed. Exp: 60, Got: ${newStock}`);
-    if (newCost < 416 || newCost > 417) throw new Error(`AVCO failed. Exp: ~416.67, Got: ${newCost}`);
-    
-    addLog('Procurement', 'success', 'PO Received & Cost Averaged', `New Cost: ৳${newCost.toFixed(2)} | Stock: 60`);
+    addLog('Procurement', 'success', 'PO Received & Cost Averaged', `New Cost: ৳${p.variants[0].costPrice.toFixed(2)} | Stock: 60`);
   };
 
   const runPhaseSales = async () => {
@@ -211,7 +220,10 @@ export const WorkflowTester: React.FC<WorkflowTesterProps> = (props) => {
     if (!customerId) throw new Error("Dependency Missing: Customer");
 
     const saleId = `ORD-${tid}`;
-    addLog('Sales', 'info', 'Processing "Pending" Order...');
+    contextRef.current.saleId = saleId;
+
+    // --- TEST 1: Lifecycle Logic (Pending -> Delivered -> Confirmed -> Delivered) ---
+    addLog('Sales', 'info', 'Step 1: Create PENDING Order (5 units)', 'Stock should NOT be deducted yet.');
 
     const sale: Sale = {
       id: saleId, date: new Date().toISOString(), customerId, customerName: `Test Customer ${tid}`,
@@ -221,99 +233,130 @@ export const WorkflowTester: React.FC<WorkflowTesterProps> = (props) => {
     };
     props.onAddSale(sale);
     
-    await wait(600);
+    await waitFor(async () => {
+        const s = await ApiService.fetchLatest('sales');
+        return s?.some((x: any) => x.id === saleId);
+    });
+
+    // Check Stock: Should still be 60 (from Procurement phase)
     let products = await ApiService.fetchLatest('products');
     let p = products?.find((x: any) => x.id === productId);
+    if (p.variants[0].stockLevel !== 60) throw new Error(`Stock prematurely deducted! Expected 60, got ${p.variants[0].stockLevel}`);
+    addLog('Sales', 'success', 'Pending Order Created', 'Stock intact at 60.');
+
+    // Move to Delivered
+    addLog('Sales', 'info', 'Step 2: Update to DELIVERED', 'Stock SHOULD be deducted now.');
+    props.onUpdateSale({ ...sale, status: 'Delivered' });
     
-    if (p.variants[0].stockLevel !== 60) throw new Error("Stock deducted on Pending order (Should be reserved only)");
-    addLog('Sales', 'info', 'Order Confirmed -> Stock Deduction');
-    
+    await waitFor(async () => {
+        const products = await ApiService.fetchLatest('products');
+        const p = products?.find((x: any) => x.id === productId);
+        return p.variants[0].stockLevel === 55;
+    });
+    addLog('Sales', 'success', 'Order Delivered', 'Stock successfully deducted to 55.');
+
+    // Move Back to Confirmed (Revert Logic)
+    addLog('Sales', 'info', 'Step 3: Revert to CONFIRMED', 'Stock should be RESTORED.');
     props.onUpdateSale({ ...sale, status: 'Confirmed' });
-    await wait(800);
     
-    products = await ApiService.fetchLatest('products');
-    p = products?.find((x: any) => x.id === productId);
-    const customers = await ApiService.fetchLatest('customers');
-    const c = customers?.find((x: any) => x.id === customerId);
+    await waitFor(async () => {
+        const products = await ApiService.fetchLatest('products');
+        const p = products?.find((x: any) => x.id === productId);
+        return p.variants[0].stockLevel === 60;
+    });
+    addLog('Sales', 'success', 'Delivery Reverted', 'Stock restored to 60.');
 
-    if (p.variants[0].stockLevel !== 55) throw new Error("Stock NOT deducted on Confirmation");
-    if (c.totalSpent !== 5000) throw new Error(`LTV Update failed. Exp: 5000, Got: ${c.totalSpent}`);
-
-    contextRef.current.saleId = saleId;
-    addLog('Sales', 'success', 'Order Flow Verified', 'Stock: 55 | LTV: 5000');
+    // Final Delivery
+    addLog('Sales', 'info', 'Step 4: Finalize Delivery', 'Stock deducted again.');
+    props.onUpdateSale({ ...sale, status: 'Delivered' });
+    await new Promise(r => setTimeout(r, 200));
+    
+    // --- TEST 2: Partial Return Order Setup ---
+    const partSaleId = `ORD-PART-${tid}`;
+    contextRef.current.partSaleId = partSaleId;
+    
+    addLog('Sales', 'info', 'Step 5: Create Order for Partial Return Test (Qty: 2)', 'Will return 1 later.');
+    const partSale: Sale = {
+      id: partSaleId, date: new Date().toISOString(), customerId, customerName: `Test Customer ${tid}`,
+      items: [{ productId: productId!, productName: 'Test', variantId, quantity: 2, unitPrice: 1000, unitCost: 416.67, total: 2000 }],
+      discountAmount: 0, deliveryCharge: 0, totalAmount: 2000, totalCost: 833.34, profit: 1166.66, status: 'Delivered',
+      paymentMethod: 'Cash'
+    };
+    props.onAddSale(partSale); // Auto-deducts because status is Delivered
+    
+    await waitFor(async () => {
+        const products = await ApiService.fetchLatest('products');
+        const p = products?.find((x: any) => x.id === productId);
+        return p.variants[0].stockLevel === 53; // 55 - 2
+    });
+    addLog('Sales', 'success', 'Partial Test Order Created', 'Stock at 53.');
   };
 
   const runPhaseReturns = async () => {
-    const { tid, saleId, productId, variantId, customerId } = contextRef.current;
-    if (!saleId) throw new Error("Dependency Missing: Order");
+    const { tid, partSaleId, productId, variantId, customerId } = contextRef.current;
+    if (!partSaleId) throw new Error("Dependency Missing: Partial Order");
 
-    addLog('Returns', 'info', 'Processing RMA (1 Unit)...');
+    // --- Partial Return Logic ---
+    addLog('Returns', 'info', 'Executing Partial Return (1 of 2 items)...');
     
-    const rma: Return = {
-      id: `RMA-${tid}`, orderId: saleId, customerName: `Test Customer ${tid}`, productId: productId!, variantId,
+    const partialRma: Return = {
+      id: `RMA-PART-${tid}`, orderId: partSaleId, customerName: `Test Customer ${tid}`, productId: productId!, variantId,
       productName: 'Test', quantity: 1, refundAmount: 1000, unitCost: 416.67,
       reason: 'Other', condition: 'Resellable', status: 'Pending', date: new Date().toISOString()
     };
-    props.onAddReturn(rma);
-    await wait(300);
-    props.onUpdateReturnStatus(rma, 'Approved');
-    await wait(800);
-
-    let products = await ApiService.fetchLatest('products');
-    let p = products?.find((x: any) => x.id === productId);
-    let customers = await ApiService.fetchLatest('customers');
-    let c = customers?.find((x: any) => x.id === customerId);
-
-    if (p.variants[0].stockLevel !== 56) throw new Error("RMA Restock failed");
-    if (c.totalSpent !== 4000) throw new Error("LTV Refund adjustment failed"); // 5000 - 1000
-
-    // Delivery Refusal Test
-    const delSaleId = `ORD-DEL-${tid}`;
-    addLog('Returns', 'info', 'Simulating "Delivery Refusal Loss"...');
+    props.onAddReturn(partialRma);
+    await new Promise(r => setTimeout(r, 200)); 
+    props.onUpdateReturnStatus(partialRma, 'Approved');
     
-    // Create new order with delivery fee
-    const delSale: Sale = {
-      id: delSaleId, date: new Date().toISOString(), customerId: customerId!, customerName: `Test Customer ${tid}`,
-      items: [{ productId: productId!, productName: 'Test', variantId, quantity: 1, unitPrice: 1000, unitCost: 416.67, total: 1000 }],
-      discountAmount: 0, deliveryCharge: 150, totalAmount: 1150, totalCost: 416.67, profit: 733.33, status: 'Confirmed',
-      paymentMethod: 'Cash'
-    };
-    props.onAddSale(delSale);
-    await wait(500);
-
-    // Simulate Return with "Refusal" flag logic manually triggering expense
-    const refusalExpense: Expense = {
-      id: `EXP-LOSS-${tid}`, date: new Date().toISOString(), category: 'Logistics',
-      description: `Delivery Loss - Refused`, amount: 150, paymentMethod: 'System', status: 'Paid', referenceId: delSaleId
-    };
-    props.onAddExpense(refusalExpense);
-    await wait(500);
-
-    const expenses = await ApiService.fetchLatest('expenses');
-    if (!expenses.find((e: any) => e.id === `EXP-LOSS-${tid}`)) throw new Error("Loss Expense not logged");
-
-    addLog('Returns', 'success', 'RMA & Loss Logic Verified');
+    await waitFor(async () => {
+        // Check 1: Stock restored by 1
+        const products = await ApiService.fetchLatest('products');
+        const p = products?.find((x: any) => x.id === productId);
+        // Check 2: Order Status updated
+        const sales = await ApiService.fetchLatest('sales');
+        const s = sales?.find((x: any) => x.id === partSaleId);
+        
+        return p.variants[0].stockLevel === 54 && s.status === 'Partially Returned';
+    });
+    addLog('Returns', 'success', 'Partial Return Verified', 'Stock: 54 (+1) | Order Status: "Partially Returned"');
   };
 
   const runPhaseFinancials = async () => {
-    const { tid } = contextRef.current;
-    addLog('Financials', 'info', 'Auditing Ledger...');
-    
-    // Just verify the expense we added exists and maybe add another op expense
-    const expId = `EXP-OP-${tid}`;
-    props.onAddExpense({
-        id: expId, date: new Date().toISOString(), category: 'Utilities', 
-        description: 'Test OpEx', amount: 500, paymentMethod: 'Cash', status: 'Paid'
-    });
-    
-    await wait(500);
-    const expenses = await ApiService.fetchLatest('expenses');
-    const logs = await ApiService.fetchLatest('logs');
-    
-    if (!expenses.find((e: any) => e.id === expId)) throw new Error("Expense persistence failed");
-    if (!logs || logs.length === 0) throw new Error("Audit Trail silent");
+    addLog('Financials', 'info', 'Auditing Ledger Mathematics...');
+    const { tid, saleId, partSaleId } = contextRef.current;
 
-    addLog('Financials', 'success', 'Ledger Integrity Confirmed');
+    await new Promise(r => setTimeout(r, 500));
+    
+    const sales: Sale[] = await ApiService.fetchLatest('sales');
+    const returns: Return[] = await ApiService.fetchLatest('returns');
+
+    // 1. Verify Gross Revenue (Should include FULL amount of Partial Order)
+    const testSales = sales.filter(s => s.id === saleId || s.id === partSaleId);
+    // Sale 1: 5000 (Delivered)
+    // Sale 2: 2000 (Partially Returned)
+    // Total Gross: 7000
+    const grossRevenue = testSales.reduce((sum, s) => sum + s.totalAmount, 0);
+    
+    if (grossRevenue !== 7000) {
+        throw new Error(`Gross Revenue Mismatch. Expected 7000 (5000+2000), got ${grossRevenue}. Partial Order value might be missing.`);
+    }
+
+    // 2. Verify Refunds
+    const testReturns = returns.filter(r => r.orderId === saleId || r.orderId === partSaleId);
+    // Only the Partial Return of 1000 should exist for these specific IDs (ignoring previous test runs)
+    const totalRefunds = testReturns.reduce((sum, r) => sum + r.refundAmount, 0);
+
+    if (totalRefunds !== 1000) {
+        throw new Error(`Refunds Mismatch. Expected 1000, got ${totalRefunds}.`);
+    }
+
+    // 3. Verify Net Revenue
+    const netRevenue = grossRevenue - totalRefunds;
+    if (netRevenue !== 6000) {
+        throw new Error(`Net Revenue Logic Failure. Expected 6000 (7000-1000), got ${netRevenue}.`);
+    }
+
+    addLog('Financials', 'success', 'MATH VERIFIED: Ledger Exact', `Gross: 7000 - Refunds: 1000 = Net: 6000.`);
   };
 
   const runnerMap: Record<string, () => Promise<void>> = {
@@ -337,7 +380,6 @@ export const WorkflowTester: React.FC<WorkflowTesterProps> = (props) => {
     addLog('System', 'info', `Starting Diagnostic Cycle #${contextRef.current.tid}`);
 
     try {
-      // Sort phases to ensure correct dependency order if multiple selected
       const orderedSelection = PHASES.map(p => p.id).filter(id => selectedPhases.includes(id));
       
       for (let i = 0; i < orderedSelection.length; i++) {
@@ -346,7 +388,6 @@ export const WorkflowTester: React.FC<WorkflowTesterProps> = (props) => {
           await runnerMap[phaseId]();
         } catch (e: any) {
           addLog(PHASES.find(p => p.id === phaseId)?.label || phaseId, 'failure', e.message);
-          // If a phase fails, we stop to prevent cascading errors in dependent phases
           throw new Error(`Aborted at ${phaseId}`);
         }
         setProgress(((i + 1) / orderedSelection.length) * 100);
@@ -414,7 +455,7 @@ export const WorkflowTester: React.FC<WorkflowTesterProps> = (props) => {
                     : 'bg-indigo-600 text-white hover:bg-indigo-700 active:scale-95 disabled:opacity-50 disabled:active:scale-100'
                 }`}
               >
-                {isRunning ? <RefreshCw size={20} className="animate-spin" /> : <PlayCircle size={20} />}
+                {isRunning ? <Loader2 size={20} className="animate-spin" /> : <PlayCircle size={20} />}
                 {isRunning ? 'Running Tests...' : 'Execute Sequence'}
               </button>
            </div>

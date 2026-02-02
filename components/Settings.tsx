@@ -16,11 +16,7 @@ import {
   Building,
   KeyRound,
   Save,
-  Smartphone,
-  Monitor,
   Upload,
-  Receipt,
-  FileText,
   Image as ImageIcon
 } from 'lucide-react';
 
@@ -32,6 +28,8 @@ interface SettingsProps {
   expenses: Expense[];
   returns: Return[];
   onFactoryReset: () => void;
+  onPurgeSales: () => void;
+  onPurgeInventory: () => void;
   businessProfile: { name: string; address: string; phone: string; email: string; logo?: string; footerMessage?: string; terms?: string };
   onUpdateProfile: (p: any) => void;
   onUpdatePin: (pin: string) => void;
@@ -39,42 +37,18 @@ interface SettingsProps {
 
 export const Settings: React.FC<SettingsProps> = ({ 
   products, sales, customers, suppliers, expenses, returns,
-  onFactoryReset, businessProfile, onUpdateProfile, onUpdatePin
+  onFactoryReset, onPurgeSales, onPurgeInventory, businessProfile, onUpdateProfile, onUpdatePin
 }) => {
   const [storageUsed, setStorageUsed] = useState(0);
   const [isResetting, setIsResetting] = useState(false);
-  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   
   const [profileForm, setProfileForm] = useState(businessProfile);
   const [newPin, setNewPin] = useState('');
 
   useEffect(() => {
     ApiService.getStorageSize().then(size => setStorageUsed(size));
-
-    const handleBeforeInstallPrompt = (e: any) => {
-      e.preventDefault();
-      setDeferredPrompt(e);
-    };
-
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-
-    return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-    };
   }, []);
   
-  const handleInstallClick = () => {
-    if (deferredPrompt) {
-      deferredPrompt.prompt();
-      deferredPrompt.userChoice.then((choiceResult: any) => {
-        if (choiceResult.outcome === 'accepted') {
-          console.log('User accepted the install prompt');
-        }
-        setDeferredPrompt(null);
-      });
-    }
-  };
-
   const systemData = useMemo(() => {
     const lowStock = products.filter((item) => 
       item.hasVariants 
@@ -93,8 +67,15 @@ export const Settings: React.FC<SettingsProps> = ({
     };
   }, [products, sales, customers, suppliers, expenses, storageUsed]);
 
-  const handleExport = () => {
-    const data = { products, sales, customers, suppliers, expenses, returns, exportedAt: new Date().toISOString() };
+  const handleExport = async () => {
+    const purchaseOrders = await ApiService.fetchLatest('purchaseOrders') || [];
+    const periodSummaries = await ApiService.fetchLatest('period_summaries') || [];
+    
+    const data = { 
+        products, sales, customers, suppliers, expenses, returns, purchaseOrders, periodSummaries,
+        exportedAt: new Date().toISOString() 
+    };
+    
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -123,6 +104,9 @@ export const Settings: React.FC<SettingsProps> = ({
         if (data.suppliers) await ApiService.pushUpdate('suppliers', data.suppliers);
         if (data.expenses) await ApiService.pushUpdate('expenses', data.expenses);
         if (data.returns) await ApiService.pushUpdate('returns', data.returns);
+        if (data.purchaseOrders) await ApiService.pushUpdate('purchaseOrders', data.purchaseOrders);
+        if (data.periodSummaries) await ApiService.pushUpdate('period_summaries', data.periodSummaries);
+        
         window.location.reload();
       } catch (err) {
         alert("Import failed. Invalid file format.");
@@ -231,27 +215,6 @@ export const Settings: React.FC<SettingsProps> = ({
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         
-        {/* Install App Section - ONLY visible if install prompt is captured */}
-        {deferredPrompt && (
-          <div className="lg:col-span-2 bg-indigo-600 rounded-[3rem] p-10 text-white shadow-xl relative overflow-hidden flex flex-col md:flex-row items-center justify-between gap-8">
-             <div className="absolute top-0 left-0 w-full h-full bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10"></div>
-             <div className="relative z-10">
-                <div className="flex items-center gap-3 mb-2">
-                   <Monitor size={24} className="opacity-80" />
-                   <Smartphone size={24} className="opacity-80" />
-                </div>
-                <h3 className="text-2xl font-serif font-bold">Install Native App</h3>
-                <p className="text-indigo-200 text-sm mt-2 max-w-lg">Get the full desktop/mobile experience. Adds an icon to your home screen, removes browser bars, and runs offline.</p>
-             </div>
-             <button 
-               onClick={handleInstallClick}
-               className="relative z-10 px-8 py-4 bg-white text-indigo-700 font-bold rounded-2xl shadow-lg hover:bg-indigo-50 transition-all active:scale-95 whitespace-nowrap"
-             >
-               Install Now
-             </button>
-          </div>
-        )}
-
         {/* Business Identity Section */}
         <div className="bg-white dark:bg-slate-900/50 rounded-[3rem] border border-slate-200 dark:border-slate-800 p-10 space-y-6 shadow-sm">
            <div className="flex items-center gap-4 border-b border-slate-100 dark:border-slate-800 pb-6">
@@ -368,22 +331,38 @@ export const Settings: React.FC<SettingsProps> = ({
              </div>
           </div>
 
-          <div className="bg-red-50 dark:bg-red-900/10 rounded-[3rem] border border-red-100 dark:border-red-900/20 p-10 space-y-6 shadow-sm text-center">
-             <div className="flex flex-col items-center justify-center gap-4">
-                <div className="p-4 bg-red-100 dark:bg-red-500/20 rounded-full text-red-600 dark:text-red-400">
-                    <AlertTriangle size={32} />
+          <div className="bg-white dark:bg-slate-900/50 rounded-[3rem] border border-red-100 dark:border-red-900/10 p-10 space-y-6 shadow-sm">
+            <h3 className="text-xl font-serif font-bold text-slate-900 dark:text-white">Danger Zone</h3>
+            
+            <div className="space-y-4">
+              <button 
+                onClick={() => { if(confirm("Permanently erase all order records?")) onPurgeSales(); }}
+                className="w-full flex items-center justify-between p-6 bg-slate-50 dark:bg-slate-800/40 rounded-3xl hover:bg-red-50 dark:hover:bg-red-500/5 transition-all text-slate-700 dark:text-slate-300 group border border-transparent hover:border-red-100"
+              >
+                <div className="text-left">
+                  <span className="block font-bold">Clear Order History</span>
+                  <span className="text-[10px] uppercase font-black text-slate-400 mt-0.5">Reset ledger to zero</span>
                 </div>
-                <h3 className="text-2xl font-serif font-bold text-red-700 dark:text-red-400">
-                    Factory Reset
-                </h3>
-             </div>
-             <p className="text-sm text-red-600/80 dark:text-red-400/80 leading-relaxed font-medium mx-auto max-w-md">
-                This action will wipe <strong>all application data</strong>, including inventory, sales history, customers, and settings. The application will be reset to an empty state.
-             </p>
-             <button 
+                <AlertTriangle size={18} className="opacity-20 group-hover:opacity-100 text-red-500" />
+              </button>
+
+              <button 
+                onClick={() => { if(confirm("Remove all inventory items?")) onPurgeInventory(); }}
+                className="w-full flex items-center justify-between p-6 bg-slate-50 dark:bg-slate-800/40 rounded-3xl hover:bg-red-50 dark:hover:bg-red-500/5 transition-all text-slate-700 dark:text-slate-300 group border border-transparent hover:border-red-100"
+              >
+                <div className="text-left">
+                  <span className="block font-bold">Flush Inventory Catalog</span>
+                  <span className="text-[10px] uppercase font-black text-slate-400 mt-0.5">Empty all stock levels</span>
+                </div>
+                <AlertTriangle size={18} className="opacity-20 group-hover:opacity-100 text-red-500" />
+              </button>
+            </div>
+
+            <div className="pt-6 mt-2">
+              <button 
                 onClick={handleFactoryReset}
                 disabled={isResetting}
-                className="w-full py-5 bg-red-600 hover:bg-red-700 text-white rounded-[2rem] font-black uppercase tracking-widest text-[10px] shadow-xl shadow-red-500/20 transition-all flex items-center justify-center gap-3 active:scale-[0.98] disabled:opacity-70 disabled:cursor-wait"
+                className="w-full py-5 bg-red-600 hover:bg-red-700 text-white rounded-[2rem] font-black uppercase tracking-widest text-[10px] shadow-2xl shadow-red-900/30 transition-all flex items-center justify-center gap-3 active:scale-[0.98] disabled:opacity-70 disabled:cursor-wait"
               >
                 {isResetting ? (
                   <>
@@ -395,6 +374,7 @@ export const Settings: React.FC<SettingsProps> = ({
                   </>
                 )}
               </button>
+            </div>
           </div>
         </div>
       </div>

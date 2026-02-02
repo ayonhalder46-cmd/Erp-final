@@ -65,13 +65,13 @@ export interface Sale {
   customerName: string;
   items: SaleItem[];
   discountAmount: number;
-  deliveryCharge: number;
+  deliveryCharge?: number; // DEPRECATED: Kept optional for legacy data compatibility
   totalAmount: number;
   totalCost: number;
   profit: number;
   notes?: string;
-  paymentMethod: 'Cash' | 'Card' | 'Mobile Money' | 'Bank Transfer' | 'Other'; // Added Payment Method
-  status: 'Pending' | 'Confirmed' | 'Delivered' | 'Returned' | 'Cancelled';
+  paymentMethod: 'Cash' | 'Card' | 'Mobile Money' | 'Bank Transfer' | 'Other'; 
+  status: 'Pending' | 'Confirmed' | 'Delivered' | 'Returned' | 'Partially Returned' | 'Cancelled';
   isDelivered?: boolean; // Deprecated, kept for backward compat
 }
 
@@ -99,7 +99,8 @@ export interface Return {
   reason: 'Defective' | 'Wrong Item' | 'Changed Mind' | 'Other';
   condition: 'Resellable' | 'Damaged';
   status: 'Pending' | 'Approved' | 'Rejected';
-  isDeliveryRefused?: boolean; // New flag to track logic
+  isDeliveryRefused?: boolean; 
+  deliveryLossAmount?: number; 
   date: string;
 }
 

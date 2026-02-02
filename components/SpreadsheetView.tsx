@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { Product, Sale, Customer, Supplier, Expense } from '../types';
-import { FileSpreadsheet, Download, Filter, Search, Table, Package, Users, ShoppingCart, Truck, Save, Edit2 } from 'lucide-react';
+import { FileSpreadsheet, Download, Search, Edit2, ChevronLeft, ChevronRight, Filter, Package, ShoppingCart, Users, Truck } from 'lucide-react';
 
 interface SpreadsheetViewProps {
   products: Product[];
@@ -99,6 +99,9 @@ export const SpreadsheetView: React.FC<SpreadsheetViewProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<Tab>('inventory');
   const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('All');
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 50;
 
   const downloadCSV = () => {
     let headers: string[] = [];
@@ -157,15 +160,42 @@ export const SpreadsheetView: React.FC<SpreadsheetViewProps> = ({
 
   const renderTable = () => {
     let headers: string[] = [];
+    let allData: any[] = [];
     let rows: React.ReactNode[] = [];
 
     if (activeTab === 'inventory') {
       headers = ["SKU", "Product Name", "Category (Edit)", "Supplier (Edit)", "Stock (Edit)", "Min Stock (Edit)", "Cost (Edit ৳)", "Price (Edit ৳)", "Asset Value (৳)"];
-      const filtered = products.filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()) || p.sku.toLowerCase().includes(searchTerm.toLowerCase()));
+      allData = products.filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()) || p.sku.toLowerCase().includes(searchTerm.toLowerCase()));
+    } else if (activeTab === 'sales') {
+      headers = ["Order Ref", "Date", "Customer", "Items", "Total (৳)", "Status"];
+      let filteredSales = sales.filter(s => s.id.includes(searchTerm) || s.customerName.toLowerCase().includes(searchTerm.toLowerCase()));
       
-      const supplierOptions = suppliers.map(s => ({ id: s.id, label: s.name }));
+      if (statusFilter !== 'All') {
+        filteredSales = filteredSales.filter(s => s.status === statusFilter);
+      }
+      
+      allData = filteredSales;
+    } else if (activeTab === 'customers') {
+      headers = ["Name", "Phone", "Tier", "Total Spent (৳)", "Last Purchase"];
+      allData = customers.filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase()));
+    } else if (activeTab === 'suppliers') {
+      headers = ["Name", "Contact", "Email", "Category", "Status"];
+      allData = suppliers.filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase()));
+    } else if (activeTab === 'expenses') {
+      headers = ["Date", "Category", "Description", "Amount (৳)", "Status"];
+      allData = expenses.filter(e => e.description.toLowerCase().includes(searchTerm.toLowerCase()) || e.category.toLowerCase().includes(searchTerm.toLowerCase()));
+    }
 
-      rows = filtered.map(p => {
+    const totalPages = Math.ceil(allData.length / itemsPerPage);
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const paginatedData = allData.slice(startIndex, startIndex + itemsPerPage);
+
+    // Reset page if search changes results
+    if (currentPage > totalPages && totalPages > 0) setCurrentPage(1);
+
+    if (activeTab === 'inventory') {
+      const supplierOptions = suppliers.map(s => ({ id: s.id, label: s.name }));
+      rows = paginatedData.map((p: Product) => {
         const stock = p.hasVariants ? p.variants?.reduce((a,b) => a + b.stockLevel, 0) : p.stockLevel;
         return (
           <tr key={p.id} className="hover:bg-indigo-50/30 dark:hover:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700 transition-colors">
@@ -176,13 +206,11 @@ export const SpreadsheetView: React.FC<SpreadsheetViewProps> = ({
                  type="text" 
                  onSave={(val) => onUpdateProduct({...p, category: val})} 
             />
-            
             <EditableSelectCell 
                 value={p.supplierId || ''} 
                 options={supplierOptions}
                 onSave={(val) => onUpdateProduct({...p, supplierId: val})}
             />
-            
             {p.hasVariants ? (
                <>
                  <Cell align="center">
@@ -206,29 +234,24 @@ export const SpreadsheetView: React.FC<SpreadsheetViewProps> = ({
                  />
                </>
             )}
-
             <EditableCell 
               value={p.costPrice} 
               type="number" 
               prefix="৳"
               onSave={(val) => onUpdateProduct({...p, costPrice: val})} 
             />
-            
             <EditableCell 
               value={p.sellingPrice} 
               type="number" 
               prefix="৳"
               onSave={(val) => onUpdateProduct({...p, sellingPrice: val})} 
             />
-            
             <Cell align="right" className="font-mono text-slate-400">{((stock || 0) * p.costPrice).toLocaleString()}</Cell>
           </tr>
         );
       });
     } else if (activeTab === 'sales') {
-      headers = ["Order Ref", "Date", "Customer", "Items", "Total (৳)", "Status"];
-      const filtered = sales.filter(s => s.id.includes(searchTerm) || s.customerName.toLowerCase().includes(searchTerm.toLowerCase()));
-      rows = filtered.map(s => (
+      rows = paginatedData.map((s: Sale) => (
         <tr key={s.id} className="hover:bg-indigo-50/50 dark:hover:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700">
           <Cell>#{s.id.slice(-6)}</Cell>
           <Cell>{s.date}</Cell>
@@ -239,9 +262,7 @@ export const SpreadsheetView: React.FC<SpreadsheetViewProps> = ({
         </tr>
       ));
     } else if (activeTab === 'customers') {
-      headers = ["Name", "Phone", "Tier", "Total Spent (৳)", "Last Purchase"];
-      const filtered = customers.filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase()));
-      rows = filtered.map(c => (
+      rows = paginatedData.map((c: Customer) => (
         <tr key={c.id} className="hover:bg-indigo-50/50 dark:hover:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700">
           <Cell>{c.name}</Cell>
           <Cell>{c.phone}</Cell>
@@ -251,9 +272,7 @@ export const SpreadsheetView: React.FC<SpreadsheetViewProps> = ({
         </tr>
       ));
     } else if (activeTab === 'suppliers') {
-      headers = ["Name", "Contact", "Email", "Category", "Status"];
-      const filtered = suppliers.filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase()));
-      rows = filtered.map(s => (
+      rows = paginatedData.map((s: Supplier) => (
         <tr key={s.id} className="hover:bg-indigo-50/50 dark:hover:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700">
           <Cell>{s.name}</Cell>
           <Cell>{s.contactPerson}</Cell>
@@ -263,9 +282,7 @@ export const SpreadsheetView: React.FC<SpreadsheetViewProps> = ({
         </tr>
       ));
     } else if (activeTab === 'expenses') {
-      headers = ["Date", "Category", "Description", "Amount (৳)", "Status"];
-      const filtered = expenses.filter(e => e.description.toLowerCase().includes(searchTerm.toLowerCase()) || e.category.toLowerCase().includes(searchTerm.toLowerCase()));
-      rows = filtered.map(e => (
+      rows = paginatedData.map((e: Expense) => (
         <tr key={e.id} className="hover:bg-indigo-50/50 dark:hover:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700">
           <Cell>{e.date}</Cell>
           <Cell>{e.category}</Cell>
@@ -277,30 +294,60 @@ export const SpreadsheetView: React.FC<SpreadsheetViewProps> = ({
     }
 
     return (
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              {/* Excel-like letter headers */}
-              <tr className="bg-slate-100 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
-                {headers.map((_, i) => (
-                  <th key={`col-${i}`} className="px-4 py-1 text-[9px] font-mono text-center text-slate-400 border-r border-slate-200 dark:border-slate-700">
-                    {String.fromCharCode(65 + i)}
-                  </th>
-                ))}
-              </tr>
-              <tr className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
-                {headers.map((h, i) => (
-                  <th key={i} className="px-4 py-3 text-[10px] font-black uppercase text-slate-500 tracking-widest border-r border-slate-200 dark:border-slate-700 last:border-0 whitespace-nowrap bg-slate-100 dark:bg-slate-800/80">
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="bg-white dark:bg-slate-900 font-mono text-xs">
-              {rows}
-            </tbody>
-          </table>
+      <div className="flex flex-col h-full">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm flex-1 overflow-auto">
+          <div className="min-w-full inline-block align-middle">
+            <div className="border-b border-slate-200 dark:border-slate-700">
+              <table className="min-w-full text-left border-collapse">
+                <thead className="sticky top-0 z-10 shadow-sm">
+                  {/* Excel-like letter headers */}
+                  <tr className="bg-slate-100 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
+                    {headers.map((_, i) => (
+                      <th key={`col-${i}`} className="px-4 py-1 text-[9px] font-mono text-center text-slate-400 border-r border-slate-200 dark:border-slate-700">
+                        {String.fromCharCode(65 + i)}
+                      </th>
+                    ))}
+                  </tr>
+                  <tr className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
+                    {headers.map((h, i) => (
+                      <th key={i} className="px-4 py-3 text-[10px] font-black uppercase text-slate-500 tracking-widest border-r border-slate-200 dark:border-slate-700 last:border-0 whitespace-nowrap bg-slate-100 dark:bg-slate-800/80">
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="bg-white dark:bg-slate-900 font-mono text-xs">
+                  {rows}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        
+        {/* Pagination Controls */}
+        <div className="p-4 border-t border-slate-200 dark:border-slate-800 flex justify-between items-center bg-white dark:bg-slate-900 shrink-0">
+           <span className="text-xs text-slate-500 dark:text-slate-400 font-bold">
+             Showing {startIndex + 1}-{Math.min(startIndex + itemsPerPage, allData.length)} of {allData.length} records
+           </span>
+           <div className="flex gap-2">
+              <button 
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                disabled={currentPage === 1}
+                className="p-2 bg-slate-100 dark:bg-slate-800 rounded-lg disabled:opacity-50 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+              >
+                <ChevronLeft size={16} className="text-slate-600 dark:text-slate-300" />
+              </button>
+              <span className="px-4 py-2 bg-slate-50 dark:bg-slate-800 rounded-lg text-xs font-bold text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                Page {currentPage} of {Math.max(1, totalPages)}
+              </span>
+              <button 
+                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                disabled={currentPage === totalPages || totalPages === 0}
+                className="p-2 bg-slate-100 dark:bg-slate-800 rounded-lg disabled:opacity-50 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+              >
+                <ChevronRight size={16} className="text-slate-600 dark:text-slate-300" />
+              </button>
+           </div>
         </div>
       </div>
     );
@@ -308,7 +355,7 @@ export const SpreadsheetView: React.FC<SpreadsheetViewProps> = ({
 
   const TabButton = ({ id, label, icon: Icon }: { id: Tab, label: string, icon: any }) => (
     <button 
-      onClick={() => setActiveTab(id)}
+      onClick={() => { setActiveTab(id); setCurrentPage(1); }}
       className={`flex items-center gap-2 px-5 py-3 text-sm font-bold border-b-2 transition-all ${
         activeTab === id 
         ? 'border-indigo-600 text-indigo-700 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10' 
@@ -331,13 +378,25 @@ export const SpreadsheetView: React.FC<SpreadsheetViewProps> = ({
           <p className="text-slate-500 text-sm">Centralized spreadsheet view. Click cells to edit Inventory.</p>
         </div>
         <div className="flex gap-2 w-full md:w-auto">
+          {activeTab === 'sales' && (
+            <div className="relative min-w-[140px]">
+              <select 
+                className="w-full pl-9 pr-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none appearance-none cursor-pointer"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+              >
+                {['All', 'Pending', 'Confirmed', 'Delivered', 'Returned', 'Cancelled'].map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+              <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+            </div>
+          )}
           <div className="relative flex-1 md:w-64">
              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
              <input 
                className="w-full pl-9 pr-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
                placeholder="Filter grid data..."
                value={searchTerm}
-               onChange={(e) => setSearchTerm(e.target.value)}
+               onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
              />
           </div>
           <button 
@@ -357,9 +416,9 @@ export const SpreadsheetView: React.FC<SpreadsheetViewProps> = ({
         <TabButton id="expenses" label="Expenses" icon={FileSpreadsheet} />
       </div>
 
-      <div className="flex-1 overflow-auto min-h-0 rounded-lg shadow-inner bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 relative">
+      <div className="flex-1 overflow-hidden min-h-0 rounded-lg shadow-inner bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 relative">
         {activeTab === 'inventory' && (
-          <div className="absolute top-2 right-4 z-10 text-[10px] bg-yellow-100 text-yellow-800 px-2 py-1 rounded border border-yellow-200 opacity-80 pointer-events-none">
+          <div className="absolute top-2 right-4 z-20 text-[10px] bg-yellow-100 text-yellow-800 px-2 py-1 rounded border border-yellow-200 opacity-80 pointer-events-none">
             Editable Mode Active
           </div>
         )}

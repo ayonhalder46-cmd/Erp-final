@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { Dashboard } from './components/Dashboard';
 import { Inventory } from './components/Inventory';
-import { Sales } from './Sales';
+import { Sales } from './components/Sales';
 import { Customers } from './components/Customers';
 import { Suppliers } from './components/Suppliers';
 import { Expenses } from './components/Expenses';
@@ -20,7 +20,7 @@ import { TutorialGuide } from './components/TutorialGuide';
 import { ViewState, Product, Sale, Customer, AuditLog, Supplier, Expense, Return, SyncStatus, PurchaseOrder, PeriodSummary } from './types';
 import { INITIAL_PRODUCTS, INITIAL_CUSTOMERS, INITIAL_SUPPLIERS, INITIAL_EXPENSES } from './constants';
 import { ApiService } from './components/apiService';
-import { Lock, Unlock, Menu, Moon, Sun, Home, HelpCircle, X } from 'lucide-react';
+import { Lock, Unlock, Menu, Home, HelpCircle, X } from 'lucide-react';
 import { ToastContainer, ToastMessage } from './components/Toast';
 
 function App() {
@@ -30,13 +30,9 @@ function App() {
     (localStorage.getItem('hub_theme') as 'light' | 'dark') || 'light'
   );
   
-  // Tutorial State
   const [showTutorial, setShowTutorial] = useState(false);
-
-  // Navigation State for Deep Linking (Sales -> Returns)
   const [preSelectedOrderId, setPreSelectedOrderId] = useState<string | null>(null);
 
-  // Data State
   const [products, setProducts] = useState<Product[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -47,35 +43,33 @@ function App() {
   const [periodSummaries, setPeriodSummaries] = useState<PeriodSummary[]>([]);
   const [logs, setLogs] = useState<AuditLog[]>([]);
   
-  // System State
+  // State Ref Pattern: Holds the latest state for access inside async handlers/closures
+  const stateRef = useRef({
+    products, sales, customers, suppliers, expenses, returns, purchaseOrders
+  });
+
+  useEffect(() => {
+    stateRef.current = { products, sales, customers, suppliers, expenses, returns, purchaseOrders };
+  }, [products, sales, customers, suppliers, expenses, returns, purchaseOrders]);
+  
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('synced');
   const [isInitialized, setIsInitialized] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   
-  // Toast State
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
-  // Refs for State Access
-  const productsRef = useRef(products);
-  const salesRef = useRef(sales);
-  const customersRef = useRef(customers);
-  const returnsRef = useRef(returns);
-  const purchaseOrdersRef = useRef(purchaseOrders);
-
-  // Security & Profile State
   const [pin, setPin] = useState('');
   const [enteredPin, setEnteredPin] = useState('');
   const [lockError, setLockError] = useState(false);
   
-  // Extended Business Profile for Real-World Compliance
   const [businessProfile, setBusinessProfile] = useState({
     name: 'TheDécorHub',
     address: 'Dhaka, Bangladesh',
     phone: '+880',
     email: 'admin@decorhub.com',
-    logo: '', // Base64 Logo String
+    logo: '', 
     footerMessage: 'Thank you for your business.',
     terms: 'Goods sold are subject to return policy within 7 days.'
   });
@@ -106,13 +100,26 @@ function App() {
     });
   }, [isResetting]);
 
+  // --- Keyboard Shortcuts ---
   useEffect(() => {
-    productsRef.current = products;
-    salesRef.current = sales;
-    customersRef.current = customers;
-    returnsRef.current = returns;
-    purchaseOrdersRef.current = purchaseOrders;
-  }, [products, sales, customers, returns, purchaseOrders]);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Alt + 1-5 for Quick Navigation
+      if (e.altKey && e.key === '1') setCurrentView('dashboard');
+      if (e.altKey && e.key === '2') setCurrentView('sales');
+      if (e.altKey && e.key === '3') setCurrentView('inventory');
+      if (e.altKey && e.key === '4') setCurrentView('reports');
+      if (e.altKey && e.key === '5') setCurrentView('settings');
+      
+      // Ctrl + L to Lock
+      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'l') {
+        e.preventDefault();
+        setIsLocked(true);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   useEffect(() => {
     window.addEventListener('online', () => setIsOnline(true));
@@ -189,6 +196,34 @@ function App() {
     localStorage.setItem('hub_pin', newPin);
     logAction('Update PIN', 'Security', 'Changed access PIN');
     showToast('Security PIN changed', 'success');
+  };
+
+  // --- PURGE FUNCTIONS ---
+  const handlePurgeSales = () => {
+    setSales([]);
+    ApiService.pushUpdate('sales', []);
+    
+    setReturns([]);
+    ApiService.pushUpdate('returns', []);
+
+    const resetCustomers = customers.map(c => ({
+      ...c,
+      totalSpent: 0,
+      lastPurchaseDate: 'N/A',
+      tier: 'Bronze' as const
+    }));
+    setCustomers(resetCustomers);
+    ApiService.pushUpdate('customers', resetCustomers);
+
+    logAction('Purge', 'System', 'Cleared Order History & Reset Customer LTV', 'delete');
+    showToast('Sales database purged successfully', 'error');
+  };
+
+  const handlePurgeInventory = () => {
+    setProducts([]);
+    ApiService.pushUpdate('products', []);
+    logAction('Purge', 'System', 'Deleted Inventory Catalog', 'delete');
+    showToast('All products removed', 'error');
   };
 
   const handleFactoryReset = async () => {
@@ -284,7 +319,6 @@ function App() {
         return updatedSales;
     });
     
-    // Logic: Only deduct stock if Delivered. Pending does not affect stock.
     if (sale.status === 'Delivered') {
         adjustStock(sale.items, 'deduct');
     }
@@ -313,33 +347,32 @@ function App() {
   };
 
   const handleUpdateSale = (updatedSale: Sale) => {
-    const oldSale = salesRef.current.find(s => s.id === updatedSale.id);
+    const currentSales = stateRef.current.sales;
+    const oldSale = currentSales.find(s => s.id === updatedSale.id);
     if (!oldSale) return;
 
     const oldStatus = oldSale.status;
     const newStatus = updatedSale.status;
     
-    // Define states that consume stock/revenue
-    const isOldConsumed = oldStatus === 'Delivered';
-    const isNewConsumed = newStatus === 'Delivered';
+    // Treat 'Returned' and 'Partially Returned' as consumed states (goods have left)
+    const isOldConsumed = oldStatus === 'Delivered' || oldStatus === 'Returned' || oldStatus === 'Partially Returned';
+    const isNewConsumed = newStatus === 'Delivered' || newStatus === 'Returned' || newStatus === 'Partially Returned';
 
-    // 1. Stock Adjustment Logic
+    // Stock Movement Logic
     if (isOldConsumed && !isNewConsumed) {
-        // Was Delivered, now Pending/Cancelled/Returned -> Restore Stock
+        // Restoring stock (e.g., Delivered -> Cancelled/Pending)
         adjustStock(oldSale.items, 'restore');
     } else if (!isOldConsumed && isNewConsumed) {
-        // Was Pending, now Delivered -> Deduct Stock
+        // Consuming stock (e.g., Pending -> Delivered)
         adjustStock(updatedSale.items, 'deduct');
     }
 
-    // 2. Persist Update
     setSales(prev => {
         const updatedSales = prev.map(s => s.id === updatedSale.id ? updatedSale : s);
         ApiService.pushUpdate('sales', updatedSales);
         return updatedSales;
     });
 
-    // 3. Customer LTV Logic
     const oldContribution = isOldConsumed ? oldSale.totalAmount : 0;
     const newContribution = isNewConsumed ? updatedSale.totalAmount : 0;
     const ltvAdjustment = newContribution - oldContribution;
@@ -367,11 +400,10 @@ function App() {
   };
 
   const handleDeleteSale = (id: string) => {
-    const sale = salesRef.current.find(s => s.id === id);
+    const sale = stateRef.current.sales.find(s => s.id === id);
     if (!sale) return;
 
-    // Restore stock ONLY if it was previously deducted (Delivered)
-    if (sale.status === 'Delivered') {
+    if (sale.status === 'Delivered' || sale.status === 'Returned' || sale.status === 'Partially Returned') {
         adjustStock(sale.items, 'restore');
     }
 
@@ -381,8 +413,7 @@ function App() {
         return updatedSales;
     });
     
-    // Revert Customer LTV if it was counted
-    if (sale.status === 'Delivered') {
+    if (sale.status === 'Delivered' || sale.status === 'Returned' || sale.status === 'Partially Returned') {
       setCustomers(prev => {
           const updatedCustomers = prev.map(c => {
             if (c.id === sale.customerId) {
@@ -506,56 +537,79 @@ function App() {
   };
 
   const handleUpdateReturnStatus = (rma: Return, status: Return['status']) => {
+    // FIX: Read from ref to avoid stale closures.
+    const { sales: currentSales, returns: currentReturns } = stateRef.current;
+    
     if (status === 'Approved' && rma.status !== 'Approved') {
-       const relatedSale = salesRef.current.find(s => s.id === rma.orderId);
+       const relatedSale = currentSales.find(s => s.id === rma.orderId);
        
        if (relatedSale) {
-           // --- SCENARIO A: Resellable + Standard (No Refusal) ---
-           if (rma.condition === 'Resellable' && !rma.isDeliveryRefused) {
-               handleDeleteSale(relatedSale.id); 
-           }
-           // --- SCENARIO B: Resellable + Delivery Refused ---
-           else if (rma.condition === 'Resellable' && rma.isDeliveryRefused) {
-               const loss = relatedSale.deliveryCharge;
-               
-               const updatedSale = {
-                 ...relatedSale,
-                 status: 'Returned' as const,
-                 totalAmount: 0,
-                 totalCost: 0, 
-                 profit: -loss, 
-                 notes: (relatedSale.notes || '') + ' [REFUSED DELIVERY LOSS]'
+           // 1. Stock Management & Damaged Logic
+           if (rma.condition === 'Resellable') {
+               const itemToRestore = {
+                   productId: rma.productId,
+                   variantId: rma.variantId,
+                   quantity: rma.quantity
                };
-
-               if (loss > 0) {
-                   handleAddExpense({
-                        id: `EXP-LOSS-${Date.now()}`,
-                        date: new Date().toISOString(),
-                        category: 'Logistics',
-                        description: `Delivery Loss - Refusal #${relatedSale.id.slice(-6)}`,
-                        amount: loss,
-                        paymentMethod: 'System Record',
-                        status: 'Paid',
-                        referenceId: relatedSale.id
-                   });
-               }
-
-               handleUpdateSale(updatedSale);
+               adjustStock([itemToRestore], 'restore');
+           } else if (rma.condition === 'Damaged') {
+               // Record Loss for Damaged Goods (COGS value)
+               handleAddExpense({
+                    id: `EXP-LOSS-DMG-${Date.now()}`,
+                    date: new Date().toISOString(),
+                    category: 'Inventory Loss',
+                    description: `Damaged Return - ${rma.productName} (#${rma.orderId.slice(-6)})`,
+                    amount: rma.unitCost * rma.quantity,
+                    paymentMethod: 'Asset Write-off',
+                    status: 'Paid',
+                    referenceId: rma.id
+               });
            }
-           // --- SCENARIO C: Damaged ---
-           else if (rma.condition === 'Damaged') {
-               const updatedSale = { 
-                 ...relatedSale, 
-                 status: 'Returned' as const,
-                 totalAmount: 0,
-                 profit: -relatedSale.totalCost - (rma.isDeliveryRefused ? relatedSale.deliveryCharge : 0),
-                 notes: (relatedSale.notes || '') + ' [RETURNED DAMAGED - TOTAL LOSS]'
-               };
-               
-               handleUpdateSale(updatedSale);
-               // Re-deduct stock because "Returned" status usually restores it
-               adjustStock(relatedSale.items, 'deduct');
+
+           // 2. Expense for Refusal
+           if (rma.isDeliveryRefused && (rma.deliveryLossAmount || 0) > 0) {
+               handleAddExpense({
+                    id: `EXP-LOSS-REF-${Date.now()}`,
+                    date: new Date().toISOString(),
+                    category: 'Logistics',
+                    description: `Courier Loss - Refusal #${relatedSale.id.slice(-6)}`,
+                    amount: rma.deliveryLossAmount || 0,
+                    paymentMethod: 'System Record',
+                    status: 'Paid',
+                    referenceId: relatedSale.id
+               });
            }
+           
+           // 3. Customer LTV Update (Deduct refund)
+           setCustomers(prev => {
+                const updated = prev.map(c => {
+                    if (c.id === relatedSale.customerId) {
+                        const newTotal = Math.max(0, c.totalSpent - rma.refundAmount);
+                        return { ...c, totalSpent: newTotal, tier: calculateTier(newTotal) };
+                    }
+                    return c;
+                });
+                ApiService.pushUpdate('customers', updated);
+                return updated;
+           });
+
+           // 4. Update Sale Status - Partial vs Full Return Logic
+           const allOrderReturns = [...currentReturns, { ...rma, status: 'Approved' }].filter(r => r.orderId === relatedSale.id && r.status === 'Approved');
+           const totalReturnedQty = allOrderReturns.reduce((sum, r) => sum + r.quantity, 0);
+           const totalOrderQty = relatedSale.items.reduce((sum, i) => sum + i.quantity, 0);
+           
+           let newSaleStatus: Sale['status'] = 'Delivered';
+           if (totalReturnedQty >= totalOrderQty) {
+               newSaleStatus = 'Returned';
+           } else if (totalReturnedQty > 0) {
+               newSaleStatus = 'Partially Returned';
+           }
+
+           setSales(prev => {
+               const updated = prev.map(s => s.id === relatedSale.id ? { ...s, status: newSaleStatus } : s);
+               ApiService.pushUpdate('sales', updated);
+               return updated;
+           });
        }
     }
 
@@ -734,10 +788,9 @@ function App() {
   }
 
   return (
-    <div className="flex h-screen bg-slate-100 dark:bg-slate-950 overflow-hidden selection:bg-indigo-500/30 relative">
+    <div className="flex h-screen bg-slate-100 dark:bg-slate-950 overflow-hidden selection:bg-indigo-500/30 relative custom-scrollbar">
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
       
-      {/* Help System Floating Button & Overlay */}
       <div className="fixed bottom-6 right-6 z-[90]">
         <button 
           onClick={() => setShowTutorial(!showTutorial)}
@@ -754,7 +807,6 @@ function App() {
       
       {showTutorial && <TutorialGuide view={currentView} onClose={() => setShowTutorial(false)} />}
 
-      {/* Mobile Header */}
       <div className="md:hidden fixed top-0 left-0 right-0 h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 z-30 flex items-center justify-between px-4 shadow-sm">
          <div className="flex items-center gap-3">
             <button onClick={() => setIsMobileMenuOpen(true)} className="p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors">
@@ -769,7 +821,6 @@ function App() {
          </div>
       </div>
 
-      {/* Desktop Sidebar */}
       <div className="w-[280px] shrink-0 hidden md:block h-full shadow-xl z-20">
         <Sidebar 
           currentView={currentView} 
@@ -782,7 +833,6 @@ function App() {
         />
       </div>
 
-      {/* Mobile Sidebar Overlay */}
       {isMobileMenuOpen && (
         <div className="fixed inset-0 z-50 md:hidden">
           <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm transition-opacity" onClick={() => setIsMobileMenuOpen(false)} />
@@ -801,7 +851,7 @@ function App() {
         </div>
       )}
 
-      <main className="flex-1 overflow-y-auto overflow-x-hidden relative scroll-smooth pt-16 md:pt-0">
+      <main className="flex-1 overflow-y-auto overflow-x-hidden relative scroll-smooth pt-16 md:pt-0 custom-scrollbar">
         <div className="min-h-full p-4 md:p-8 lg:p-12 pb-32">
           {currentView === 'dashboard' && <Dashboard products={products} sales={sales} customers={customers} suppliers={suppliers} expenses={expenses} returns={returns} logs={logs} onNavigate={setCurrentView} theme={theme} businessProfile={businessProfile} isSecurityConfigured={pin !== '1234'} />}
           {currentView === 'spreadsheet' && <SpreadsheetView products={products} sales={sales} customers={customers} suppliers={suppliers} expenses={expenses} onUpdateProduct={handleUpdateProduct} />}
@@ -817,7 +867,7 @@ function App() {
           {currentView === 'tester' && <WorkflowTester onAddProduct={handleAddProduct} onAddSale={handleAddSale} onAddReturn={handleAddReturn} onUpdateReturnStatus={handleUpdateReturnStatus} onAddCustomer={handleAddCustomer} onAddSupplier={handleAddSupplier} onAddExpense={handleAddExpense} onUpdateSale={handleUpdateSale} onCreatePO={handleCreatePO} onReceivePO={handleReceivePO} onDeleteProduct={handleDeleteProduct} onDeleteSale={handleDeleteSale} onDeleteCustomer={handleDeleteCustomer} onDeleteSupplier={handleDeleteSupplier} onDeleteExpense={handleDeleteExpense} />}
           {currentView === 'advisor' && <Advisor products={products} sales={sales} />}
           {currentView === 'audit' && <AuditTrail logs={logs} />}
-          {currentView === 'settings' && <Settings products={products} sales={sales} customers={customers} suppliers={suppliers} expenses={expenses} returns={returns} onFactoryReset={handleFactoryReset} businessProfile={businessProfile} onUpdateProfile={handleUpdateProfile} onUpdatePin={handleUpdatePin} />}
+          {currentView === 'settings' && <Settings products={products} sales={sales} customers={customers} suppliers={suppliers} expenses={expenses} returns={returns} onFactoryReset={handleFactoryReset} onPurgeSales={handlePurgeSales} onPurgeInventory={handlePurgeInventory} businessProfile={businessProfile} onUpdateProfile={handleUpdateProfile} onUpdatePin={handleUpdatePin} />}
         </div>
       </main>
     </div>

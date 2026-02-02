@@ -4,9 +4,11 @@
   "short_name": "DécorHub",
   "start_url": "/",
   "display": "standalone",
+  "orientation": "any",
   "background_color": "#0f172a",
   "theme_color": "#4f46e5",
   "description": "Enterprise Resource Planning for Home Decor Retail",
+  "categories": ["business", "productivity", "finance"],
   "icons": [
     {
       "src": "https://cdn-icons-png.flaticon.com/512/3176/3176363.png",

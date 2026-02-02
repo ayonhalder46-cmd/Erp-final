@@ -222,7 +222,7 @@ export const Expenses: React.FC<ExpensesProps> = ({ expenses, onAdd, onUpdate, o
                        <label className="block text-[10px] uppercase font-black text-slate-400 tracking-widest mb-1.5 ml-1">Category</label>
                        <div className="relative">
                          <select className="w-full p-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/10 dark:text-white font-bold text-sm appearance-none cursor-pointer" value={newExpense.category} onChange={e => setNewExpense({...newExpense, category: e.target.value as any})}>
-                            <option>Rent</option><option>Utilities</option><option>Salaries</option><option>Marketing</option><option>Logistics</option><option>Maintenance</option><option>Procurement</option><option>Other</option>
+                            <option>Rent</option><option>Utilities</option><option>Salaries</option><option>Marketing</option><option>Logistics</option><option>Maintenance</option><option>Procurement</option><option>Inventory Loss</option><option>Other</option>
                          </select>
                        </div>
                     </div>

@@ -125,7 +125,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange, the
           <button 
             onClick={onLock}
             className="p-3 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-xl transition-all"
-            title="Lock System"
+            title="Lock System (Ctrl+Shift+L)"
           >
             <LogOut size={20} />
           </button>

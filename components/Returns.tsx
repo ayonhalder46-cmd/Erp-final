@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Return, Sale, Expense } from '../types';
-import { RotateCcw, CheckCircle2, X, AlertTriangle, Search, Package, Truck, Layers, Info, Calculator, Coins, RefreshCcw, Archive } from 'lucide-react';
+import { RotateCcw, CheckCircle2, X, AlertTriangle, Search, Package, Truck, Layers, Calculator, RefreshCcw, Archive, AlertCircle, Check } from 'lucide-react';
 
 interface ReturnsProps {
   returns: Return[];
@@ -12,14 +12,14 @@ interface ReturnsProps {
   preSelectedOrderId?: string | null;
 }
 
-export const Returns: React.FC<ReturnsProps> = ({ returns, sales, onAdd, onUpdateStatus, onAddExpense, preSelectedOrderId }) => {
+export const Returns: React.FC<ReturnsProps> = ({ returns, sales, onAdd, onUpdateStatus, preSelectedOrderId }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [returnType, setReturnType] = useState<'single' | 'full'>('single');
   
-  // Logic state for Refusal Loss
   const [customerRefusedDelivery, setCustomerRefusedDelivery] = useState(false);
+  const [manualDeliveryLoss, setManualDeliveryLoss] = useState<number>(0);
   
   const [formData, setFormData] = useState<Partial<Return>>({
     reason: 'Defective',
@@ -32,7 +32,6 @@ export const Returns: React.FC<ReturnsProps> = ({ returns, sales, onAdd, onUpdat
     unitCost: 0
   });
 
-  // Automatically open modal if a pre-selected order ID is passed
   useEffect(() => {
     if (preSelectedOrderId) {
       setSelectedOrderId(preSelectedOrderId);
@@ -42,14 +41,12 @@ export const Returns: React.FC<ReturnsProps> = ({ returns, sales, onAdd, onUpdat
 
   const selectedSale = sales.find(s => s.id === selectedOrderId);
 
-  // Eligible Orders for Return: Only Delivered orders. Sorted Newest First.
   const eligibleOrders = useMemo(() => {
     return sales
       .filter(s => s.status === 'Delivered')
       .sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [sales]);
 
-  // Stats Logic
   const stats = useMemo(() => {
     const pending = returns.filter(r => r.status === 'Pending');
     const approved = returns.filter(r => r.status === 'Approved');
@@ -65,9 +62,9 @@ export const Returns: React.FC<ReturnsProps> = ({ returns, sales, onAdd, onUpdat
     };
   }, [returns]);
 
-  // Reset toggles when order changes
   useEffect(() => {
     setCustomerRefusedDelivery(false);
+    setManualDeliveryLoss(0);
   }, [selectedOrderId, returnType]);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -90,11 +87,11 @@ export const Returns: React.FC<ReturnsProps> = ({ returns, sales, onAdd, onUpdat
             condition: formData.condition as any,
             status: formData.status as any,
             isDeliveryRefused: customerRefusedDelivery,
+            deliveryLossAmount: customerRefusedDelivery ? manualDeliveryLoss : 0,
             date: new Date().toISOString()
         };
         onAdd(newReturn);
     } else {
-        // Full Order Return Logic
         selectedSale.items.forEach((item, index) => {
             const newReturn: Return = {
                 id: `${Date.now()}-${index}`,
@@ -105,12 +102,12 @@ export const Returns: React.FC<ReturnsProps> = ({ returns, sales, onAdd, onUpdat
                 variantId: item.variantId,
                 quantity: item.quantity,
                 unitCost: item.unitCost,
-                // Default to item total.
                 refundAmount: item.total, 
                 reason: formData.reason as any,
                 condition: formData.condition as any,
                 status: formData.status as any,
                 isDeliveryRefused: customerRefusedDelivery,
+                deliveryLossAmount: (index === 0 && customerRefusedDelivery) ? manualDeliveryLoss : 0, 
                 date: new Date().toISOString()
             };
             onAdd(newReturn);
@@ -126,6 +123,7 @@ export const Returns: React.FC<ReturnsProps> = ({ returns, sales, onAdd, onUpdat
     setSelectedOrderId('');
     setReturnType('single');
     setCustomerRefusedDelivery(false);
+    setManualDeliveryLoss(0);
   }
 
   const handleProductSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -138,8 +136,8 @@ export const Returns: React.FC<ReturnsProps> = ({ returns, sales, onAdd, onUpdat
         productId: item.productId,
         variantId: item.variantId,
         unitCost: item.unitCost,
-        // Default Policy: Refund Item Price Only. Customer pays delivery.
-        refundAmount: item.unitPrice * 1 
+        // Automatically default refund amount to the cost of the item(s) to avoid 0 refund errors
+        refundAmount: item.unitPrice * (formData.quantity || 1) 
       });
     }
   };
@@ -160,7 +158,6 @@ export const Returns: React.FC<ReturnsProps> = ({ returns, sales, onAdd, onUpdat
 
   return (
     <div className="space-y-8">
-      {/* Header Area */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h2 className="text-3xl font-serif font-bold text-slate-900 dark:text-white">Returns & Refunds</h2>
@@ -171,7 +168,6 @@ export const Returns: React.FC<ReturnsProps> = ({ returns, sales, onAdd, onUpdat
         </button>
       </div>
 
-      {/* RMA Control Center Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
          <div className="bg-amber-50 dark:bg-amber-900/10 p-6 rounded-[2rem] border border-amber-100 dark:border-amber-900/20 flex items-center gap-4">
             <div className="p-4 bg-white dark:bg-amber-900/30 rounded-2xl text-amber-500">
@@ -248,7 +244,7 @@ export const Returns: React.FC<ReturnsProps> = ({ returns, sales, onAdd, onUpdat
                      </td>
                      <td className="px-8 py-5 text-xs text-slate-600 dark:text-slate-400">
                         <span className="font-bold">{r.reason}</span> <span className="text-[10px] opacity-60 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded ml-1">{r.condition}</span>
-                        {r.isDeliveryRefused && <span className="text-[10px] text-red-500 font-bold ml-1 block">Delivery Refused</span>}
+                        {r.isDeliveryRefused && <span className="text-[10px] text-red-500 font-bold ml-1 block">Refused (Loss: ৳{r.deliveryLossAmount?.toLocaleString()})</span>}
                      </td>
                      <td className="px-8 py-5">
                         <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border flex items-center gap-1.5 w-fit ${getStatusStyle(r.status)}`}>
@@ -358,36 +354,57 @@ export const Returns: React.FC<ReturnsProps> = ({ returns, sales, onAdd, onUpdat
                                 <AlertTriangle size={12} />
                                 Refund Target: {selectedSale.customerName}
                               </div>
-                              {selectedSale.deliveryCharge > 0 && (
-                                <div className="space-y-2">
-                                    <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400 font-bold bg-slate-100 dark:bg-slate-800 p-2 rounded-lg text-xs">
-                                        <Truck size={12} />
-                                        Delivery Charge: ৳{selectedSale.deliveryCharge}
-                                    </div>
-                                    
-                                    {/* Refusal Loss Toggle */}
-                                    <div className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${customerRefusedDelivery ? 'bg-red-50 border-red-200 dark:bg-red-900/10 dark:border-red-800' : 'bg-white border-slate-100 dark:bg-slate-900 dark:border-slate-800'}`}>
-                                        <input 
-                                            type="checkbox" 
-                                            id="refusedDelivery" 
-                                            className="w-5 h-5 rounded border-amber-300 text-red-600 focus:ring-red-500"
-                                            checked={customerRefusedDelivery}
-                                            onChange={e => setCustomerRefusedDelivery(e.target.checked)}
-                                        />
-                                        <div className="flex-1">
-                                            <label htmlFor="refusedDelivery" className="text-xs font-bold text-slate-800 dark:text-slate-200 cursor-pointer select-none flex items-center gap-2">
-                                                <Calculator size={14} className={customerRefusedDelivery ? "text-red-500" : "text-slate-400"}/>
-                                                Delivery Payment Refused?
-                                            </label>
-                                            {customerRefusedDelivery && (
-                                                <p className="text-[10px] text-red-500 dark:text-red-400 mt-1 font-bold animate-in slide-in-from-top-1">
-                                                    Logic: Logs ৳{selectedSale.deliveryCharge} as Expense (Loss). Order kept as 'Returned'.
-                                                </p>
-                                            )}
+                              
+                              <div className="space-y-2">
+                                  {/* Redesigned Refusal Toggle */}
+                                  <div 
+                                    className={`relative flex flex-col gap-3 p-4 rounded-xl border-2 transition-all cursor-pointer ${
+                                      customerRefusedDelivery 
+                                        ? 'bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-800' 
+                                        : 'bg-white border-slate-100 dark:bg-slate-900 dark:border-slate-800 hover:border-slate-200'
+                                    }`}
+                                    onClick={(e) => {
+                                      // Prevent toggling when clicking input
+                                      if ((e.target as HTMLElement).tagName !== 'INPUT') {
+                                        setCustomerRefusedDelivery(!customerRefusedDelivery);
+                                      }
+                                    }}
+                                  >
+                                      <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-3">
+                                            <div className={`p-2 rounded-full ${customerRefusedDelivery ? 'bg-red-100 text-red-600' : 'bg-slate-100 text-slate-400'}`}>
+                                                <Calculator size={16} />
+                                            </div>
+                                            <div>
+                                                <p className={`text-xs font-bold ${customerRefusedDelivery ? 'text-red-700 dark:text-red-400' : 'text-slate-600 dark:text-slate-300'}`}>Delivery Payment Refused?</p>
+                                                <p className="text-[9px] text-slate-400">Toggle if client did not pay delivery fees.</p>
+                                            </div>
                                         </div>
-                                    </div>
-                                </div>
-                              )}
+                                        <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${customerRefusedDelivery ? 'bg-red-500 border-red-500' : 'border-slate-300 bg-white'}`}>
+                                            {customerRefusedDelivery && <Check size={12} className="text-white" strokeWidth={4} />}
+                                        </div>
+                                      </div>
+                                      
+                                      {customerRefusedDelivery && (
+                                          <div className="animate-in slide-in-from-top-2 pt-3 mt-1 border-t border-red-200 dark:border-red-800/50" onClick={(e) => e.stopPropagation()}>
+                                              <label className="block text-[9px] font-black uppercase text-red-500 tracking-widest mb-1.5">Enter Courier Loss (৳)</label>
+                                              <input 
+                                                type="number" 
+                                                min="0" 
+                                                required 
+                                                autoFocus
+                                                className="w-full p-2 bg-white dark:bg-slate-800 border border-red-300 dark:border-red-700 rounded-lg text-red-600 font-bold outline-none text-sm" 
+                                                value={manualDeliveryLoss}
+                                                onChange={e => setManualDeliveryLoss(Number(e.target.value))}
+                                                placeholder="e.g. 120"
+                                              />
+                                              <p className="text-[9px] text-red-400 mt-2 font-medium flex items-center gap-1">
+                                                <AlertCircle size={10} /> This amount will be logged as an Expense.
+                                              </p>
+                                          </div>
+                                      )}
+                                  </div>
+                              </div>
                           </div>
                       </div>
                    </div>
@@ -406,8 +423,8 @@ export const Returns: React.FC<ReturnsProps> = ({ returns, sales, onAdd, onUpdat
                                 {/* Quick Action Helpers */}
                                 {selectedSale?.items.find(i => i.productId === formData.productId) && (
                                     <div className="flex gap-2 mt-2 justify-end">
-                                        <button type="button" onClick={() => setFormData({...formData, refundAmount: (selectedSale?.items.find(i => i.productId === formData.productId)?.unitPrice || 0) * (formData.quantity || 1)})} className="text-[9px] bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-slate-500 hover:text-indigo-600 font-bold border border-transparent hover:border-indigo-200 transition-colors">Item Only (Standard)</button>
-                                        <button type="button" onClick={() => setFormData({...formData, refundAmount: (selectedSale?.items.find(i => i.productId === formData.productId)?.unitPrice || 0) * (formData.quantity || 1) + (selectedSale?.deliveryCharge || 0)})} className="text-[9px] bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-slate-500 hover:text-indigo-600 font-bold border border-transparent hover:border-indigo-200 transition-colors">Full (COD Cancel)</button>
+                                        <button type="button" onClick={() => setFormData({...formData, refundAmount: (selectedSale?.items.find(i => i.productId === formData.productId)?.unitPrice || 0) * (formData.quantity || 1)})} className="text-[9px] bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-slate-500 hover:text-indigo-600 font-bold border border-transparent hover:border-indigo-200 transition-colors">Item Value</button>
+                                        <button type="button" onClick={() => setFormData({...formData, refundAmount: 0})} className="text-[9px] bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-slate-500 hover:text-indigo-600 font-bold border border-transparent hover:border-indigo-200 transition-colors">No Refund</button>
                                     </div>
                                 )}
                             </div>
@@ -421,12 +438,6 @@ export const Returns: React.FC<ReturnsProps> = ({ returns, sales, onAdd, onUpdat
                                         ? selectedSale.items.reduce((a,b) => a + b.total, 0).toLocaleString() 
                                         : '0'}
                                 </p>
-                                {selectedSale && selectedSale.deliveryCharge > 0 && (
-                                    <div className="flex items-center justify-center gap-1 text-[10px] mt-2 text-indigo-200 bg-indigo-700/30 py-1 px-3 rounded-full w-fit mx-auto border border-indigo-500/50">
-                                        <Info size={10} />
-                                        Excludes ৳{selectedSale.deliveryCharge} Delivery Charge
-                                    </div>
-                                )}
                             </div>
                         </div>
                     )}
