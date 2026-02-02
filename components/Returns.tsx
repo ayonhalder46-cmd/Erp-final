@@ -160,8 +160,8 @@ export const Returns: React.FC<ReturnsProps> = ({ returns, sales, onAdd, onUpdat
     <div className="space-y-8">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h2 className="text-3xl font-serif font-bold text-slate-900 dark:text-white">Returns & Refunds</h2>
-          <p className="text-slate-500 dark:text-slate-400 text-sm">Manage RMAs. Policy: Customer pays delivery (unless refused).</p>
+          <h2 className="text-3xl font-serif font-bold text-slate-900 dark:text-white">Returns & Adjustments</h2>
+          <p className="text-slate-500 dark:text-slate-400 text-sm">Handle returned items and revenue deductions.</p>
         </div>
         <button onClick={() => setIsModalOpen(true)} className="bg-slate-900 dark:bg-indigo-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg active:scale-95 transition-all">
           <RotateCcw size={18} /> Process Return
@@ -184,7 +184,7 @@ export const Returns: React.FC<ReturnsProps> = ({ returns, sales, onAdd, onUpdat
                <RefreshCcw size={24} />
             </div>
             <div>
-               <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Total Refunded</p>
+               <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Total Deductions</p>
                <p className="text-2xl font-serif font-bold text-slate-900 dark:text-white">৳{stats.totalRefunded.toLocaleString()}</p>
             </div>
          </div>
@@ -221,7 +221,7 @@ export const Returns: React.FC<ReturnsProps> = ({ returns, sales, onAdd, onUpdat
                 <th className="px-8 py-5 font-black text-[10px] uppercase tracking-widest text-slate-400">Product</th>
                 <th className="px-8 py-5 font-black text-[10px] uppercase tracking-widest text-slate-400">Reason</th>
                 <th className="px-8 py-5 font-black text-[10px] uppercase tracking-widest text-slate-400">Status</th>
-                <th className="px-8 py-5 font-black text-[10px] uppercase tracking-widest text-slate-400 text-right">Refund</th>
+                <th className="px-8 py-5 font-black text-[10px] uppercase tracking-widest text-slate-400 text-right">Value (৳)</th>
                 <th className="px-8 py-5 font-black text-[10px] uppercase tracking-widest text-slate-400 text-right">Actions</th>
               </tr>
             </thead>
@@ -286,7 +286,7 @@ export const Returns: React.FC<ReturnsProps> = ({ returns, sales, onAdd, onUpdat
               <div className="flex justify-between items-center mb-8">
                 <div>
                   <h3 className="text-2xl font-serif font-bold text-slate-900 dark:text-white">Process Return</h3>
-                  <p className="text-slate-500 dark:text-slate-400 text-xs mt-1">Create an RMA ticket for a past order.</p>
+                  <p className="text-slate-500 dark:text-slate-400 text-xs mt-1">Adjust order revenue for returned items.</p>
                 </div>
                 <button onClick={() => { setIsModalOpen(false); resetForm(); }} className="p-2 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-red-500 transition-colors"><X size={20}/></button>
               </div>
@@ -343,7 +343,7 @@ export const Returns: React.FC<ReturnsProps> = ({ returns, sales, onAdd, onUpdat
                             <div className="flex items-center gap-3 text-indigo-700 dark:text-indigo-300">
                                 <Layers size={20} />
                                 <div>
-                                    <p className="font-bold text-sm">Refund All {selectedSale.items.length} Items</p>
+                                    <p className="font-bold text-sm">Return All {selectedSale.items.length} Items</p>
                                     <p className="text-[10px] opacity-70">Inventory will be restocked automatically upon approval.</p>
                                 </div>
                             </div>
@@ -352,11 +352,10 @@ export const Returns: React.FC<ReturnsProps> = ({ returns, sales, onAdd, onUpdat
                           <div className="flex flex-col gap-2">
                               <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-300 font-bold bg-white/50 dark:bg-slate-900/50 p-2 rounded-lg text-xs">
                                 <AlertTriangle size={12} />
-                                Refund Target: {selectedSale.customerName}
+                                Customer: {selectedSale.customerName}
                               </div>
                               
                               <div className="space-y-2">
-                                  {/* Redesigned Refusal Toggle */}
                                   <div 
                                     className={`relative flex flex-col gap-3 p-4 rounded-xl border-2 transition-all cursor-pointer ${
                                       customerRefusedDelivery 
@@ -364,7 +363,6 @@ export const Returns: React.FC<ReturnsProps> = ({ returns, sales, onAdd, onUpdat
                                         : 'bg-white border-slate-100 dark:bg-slate-900 dark:border-slate-800 hover:border-slate-200'
                                     }`}
                                     onClick={(e) => {
-                                      // Prevent toggling when clicking input
                                       if ((e.target as HTMLElement).tagName !== 'INPUT') {
                                         setCustomerRefusedDelivery(!customerRefusedDelivery);
                                       }
@@ -418,21 +416,22 @@ export const Returns: React.FC<ReturnsProps> = ({ returns, sales, onAdd, onUpdat
                                 <input type="number" required min="1" max={selectedSale?.items.find(i => i.productId === formData.productId)?.quantity || 99} className="w-full p-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/10 dark:text-white font-bold transition-all" value={formData.quantity} onChange={e => setFormData({...formData, quantity: Number(e.target.value)})} />
                             </div>
                             <div>
-                                <label className="block text-[10px] uppercase font-black text-slate-400 tracking-widest mb-1.5 ml-1">Refund Amount (৳)</label>
+                                <label className="block text-[10px] uppercase font-black text-slate-400 tracking-widest mb-1.5 ml-1">Value to Deduct (৳)</label>
                                 <input type="number" required min="0" className="w-full p-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/10 dark:text-white font-bold transition-all" value={formData.refundAmount} onChange={e => setFormData({...formData, refundAmount: Number(e.target.value)})} />
                                 {/* Quick Action Helpers */}
                                 {selectedSale?.items.find(i => i.productId === formData.productId) && (
                                     <div className="flex gap-2 mt-2 justify-end">
                                         <button type="button" onClick={() => setFormData({...formData, refundAmount: (selectedSale?.items.find(i => i.productId === formData.productId)?.unitPrice || 0) * (formData.quantity || 1)})} className="text-[9px] bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-slate-500 hover:text-indigo-600 font-bold border border-transparent hover:border-indigo-200 transition-colors">Item Value</button>
-                                        <button type="button" onClick={() => setFormData({...formData, refundAmount: 0})} className="text-[9px] bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-slate-500 hover:text-indigo-600 font-bold border border-transparent hover:border-indigo-200 transition-colors">No Refund</button>
+                                        <button type="button" onClick={() => setFormData({...formData, refundAmount: 0})} className="text-[9px] bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-slate-500 hover:text-indigo-600 font-bold border border-transparent hover:border-indigo-200 transition-colors">No Deduction</button>
                                     </div>
                                 )}
+                                <p className="text-[9px] text-slate-400 mt-1 ml-1">Total revenue will reduce by this amount.</p>
                             </div>
                         </>
                     ) : (
                         <div className="col-span-2 space-y-3">
                             <div className="p-4 bg-indigo-600 text-white rounded-2xl text-center shadow-inner">
-                                <p className="text-[10px] font-black uppercase tracking-widest opacity-80 mb-1">Total Refund to Customer</p>
+                                <p className="text-[10px] font-black uppercase tracking-widest opacity-80 mb-1">Total Order Value Reversal</p>
                                 <p className="text-3xl font-serif font-bold">
                                     ৳{selectedSale 
                                         ? selectedSale.items.reduce((a,b) => a + b.total, 0).toLocaleString() 
@@ -457,7 +456,7 @@ export const Returns: React.FC<ReturnsProps> = ({ returns, sales, onAdd, onUpdat
                        </select>
                     </div>
                  </div>
-                 <button type="submit" disabled={!selectedSale} className="w-full py-5 bg-indigo-600 text-white rounded-3xl font-black uppercase tracking-widest text-[10px] shadow-2xl shadow-indigo-500/30 active:scale-95 transition-all disabled:opacity-50 disabled:scale-100 hover:bg-indigo-700">Submit Request</button>
+                 <button type="submit" disabled={!selectedSale} className="w-full py-5 bg-indigo-600 text-white rounded-3xl font-black uppercase tracking-widest text-[10px] shadow-2xl shadow-indigo-500/30 active:scale-95 transition-all disabled:opacity-50 disabled:scale-100 hover:bg-indigo-700">Confirm Adjustment</button>
               </form>
            </div>
         </div>

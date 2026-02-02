@@ -6,6 +6,7 @@ import { Calculator as CalcIcon, Percent, Truck, Layers, Search, Package, Trash2
 interface PriceCalculatorProps {
   products?: Product[];
   onUpdateProduct?: (product: Product) => void;
+  onBulkUpdateProduct?: (products: Product[]) => void;
 }
 
 interface BatchItem {
@@ -18,7 +19,7 @@ interface BatchItem {
   supplierUnitCost: number; // Price paid to factory/supplier per unit (FOB)
 }
 
-export const PriceCalculator: React.FC<PriceCalculatorProps> = ({ products = [], onUpdateProduct }) => {
+export const PriceCalculator: React.FC<PriceCalculatorProps> = ({ products = [], onUpdateProduct, onBulkUpdateProduct }) => {
   const [mode, setMode] = useState<'single' | 'import'>('import');
   const [showTutorial, setShowTutorial] = useState(false);
 
@@ -120,37 +121,44 @@ export const PriceCalculator: React.FC<PriceCalculatorProps> = ({ products = [],
   };
 
   const handleCommitInventory = () => {
-    if (!onUpdateProduct) return;
     if (!confirm(`CONFIRM IMPORT?\n\nThis will add stock and update Cost Prices (Weighted Average) for ${batchItems.length} items.\n\nTotal Investment: ৳${totalLandedValue.toLocaleString()}`)) return;
 
-    // Group updates to handle multiple variants of same product
-    const updates = new Map<string, Product>();
+    // Map to store latest state of products being updated
+    const updatesMap = new Map<string, Product>();
 
     batchCalculations.forEach(calc => {
-      // Get latest state (either from map or props)
-      const existing = updates.get(calc.productId) || products.find(p => p.id === calc.productId);
+      // Get the base product from either our local updates map or the main product list
+      const baseProduct = updatesMap.get(calc.productId) || products.find(p => p.id === calc.productId);
       
-      if (existing) {
-        const updatedProduct = JSON.parse(JSON.stringify(existing)) as Product;
+      if (baseProduct) {
+        // Deep clone to safely mutate
+        const updatedProduct = JSON.parse(JSON.stringify(baseProduct)) as Product;
 
         if (calc.variantId && updatedProduct.variants) {
            const vIndex = updatedProduct.variants.findIndex(v => v.id === calc.variantId);
            if (vIndex > -1) {
              updatedProduct.variants[vIndex].stockLevel += calc.batchQty;
-             updatedProduct.variants[vIndex].costPrice = parseFloat(calc.newAvgCost.toFixed(2));
+             // Store price with 2 decimal precision
+             updatedProduct.variants[vIndex].costPrice = Math.round((calc.newAvgCost + Number.EPSILON) * 100) / 100;
            }
         } else {
            updatedProduct.stockLevel += calc.batchQty;
-           updatedProduct.costPrice = parseFloat(calc.newAvgCost.toFixed(2));
+           updatedProduct.costPrice = Math.round((calc.newAvgCost + Number.EPSILON) * 100) / 100;
         }
         
-        updates.set(updatedProduct.id, updatedProduct);
+        updatesMap.set(updatedProduct.id, updatedProduct);
       }
     });
 
-    updates.forEach(p => onUpdateProduct(p));
+    const finalUpdates = Array.from(updatesMap.values());
+
+    if (onBulkUpdateProduct) {
+        onBulkUpdateProduct(finalUpdates);
+    } else if (onUpdateProduct) {
+        // Fallback for individual updates if bulk prop missing (legacy support)
+        finalUpdates.forEach(p => onUpdateProduct(p));
+    }
     
-    alert('Inventory Updated Successfully.\nStocks increased and costs averaged.');
     setBatchItems([]);
     setGrandTotalFees(0);
   };
@@ -224,9 +232,10 @@ export const PriceCalculator: React.FC<PriceCalculatorProps> = ({ products = [],
                          <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">৳</div>
                          <input 
                            type="number" 
+                           min="0"
                            className="w-full pl-10 pr-4 py-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl font-bold text-lg outline-none focus:ring-2 focus:ring-indigo-500 transition-all text-indigo-600 dark:text-indigo-400"
                            value={grandTotalFees || ''}
-                           onChange={e => setGrandTotalFees(Number(e.target.value))}
+                           onChange={e => setGrandTotalFees(Math.max(0, Number(e.target.value)))}
                            placeholder="0.00"
                          />
                       </div>
@@ -344,7 +353,7 @@ export const PriceCalculator: React.FC<PriceCalculatorProps> = ({ products = [],
                                         type="number" min="1"
                                         className="w-16 p-2 bg-slate-100 dark:bg-slate-800 rounded-lg text-center font-bold outline-none focus:ring-2 focus:ring-indigo-500"
                                         value={item.batchQty}
-                                        onChange={e => updateBatchItem(item.tempId, 'batchQty', Number(e.target.value))}
+                                        onChange={e => updateBatchItem(item.tempId, 'batchQty', Math.max(1, Number(e.target.value)))}
                                       />
                                    </td>
                                    <td className="px-6 py-4 text-right">
@@ -352,7 +361,7 @@ export const PriceCalculator: React.FC<PriceCalculatorProps> = ({ products = [],
                                         type="number" min="0"
                                         className="w-24 p-2 bg-slate-100 dark:bg-slate-800 rounded-lg text-right font-mono outline-none focus:ring-2 focus:ring-indigo-500"
                                         value={item.supplierUnitCost}
-                                        onChange={e => updateBatchItem(item.tempId, 'supplierUnitCost', Number(e.target.value))}
+                                        onChange={e => updateBatchItem(item.tempId, 'supplierUnitCost', Math.max(0, Number(e.target.value)))}
                                       />
                                    </td>
                                    <td className="px-6 py-4 text-right text-xs font-mono text-amber-600 dark:text-amber-500">
@@ -403,14 +412,14 @@ export const PriceCalculator: React.FC<PriceCalculatorProps> = ({ products = [],
                  <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-3">Cost Price (Supplier)</label>
                  <div className="relative">
                     <span className="absolute left-6 top-1/2 -translate-y-1/2 font-bold text-slate-400 text-xl">৳</span>
-                    <input type="number" className="w-full pl-12 p-6 bg-slate-50 dark:bg-slate-800 rounded-[1.5rem] font-bold text-3xl outline-none focus:ring-4 focus:ring-indigo-500/10 transition-all text-slate-800 dark:text-white" value={simCost} onChange={e => setSimCost(Number(e.target.value))} />
+                    <input type="number" min="0" className="w-full pl-12 p-6 bg-slate-50 dark:bg-slate-800 rounded-[1.5rem] font-bold text-3xl outline-none focus:ring-4 focus:ring-indigo-500/10 transition-all text-slate-800 dark:text-white" value={simCost} onChange={e => setSimCost(Math.max(0, Number(e.target.value)))} />
                  </div>
               </div>
               
               <div className="grid grid-cols-2 gap-8">
                  <div>
                     <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-3">Extra Costs (Flat)</label>
-                    <input type="number" className="w-full p-5 bg-slate-50 dark:bg-slate-800 rounded-2xl font-bold text-xl outline-none" value={simExtra} onChange={e => setSimExtra(Number(e.target.value))} />
+                    <input type="number" min="0" className="w-full p-5 bg-slate-50 dark:bg-slate-800 rounded-2xl font-bold text-xl outline-none" value={simExtra} onChange={e => setSimExtra(Math.max(0, Number(e.target.value)))} />
                  </div>
                  <div>
                     <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-3">Margin %</label>

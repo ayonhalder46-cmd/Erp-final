@@ -1,8 +1,8 @@
 
 import React, { useState, useMemo } from 'react';
 import { Product, Sale, Customer, Supplier, ViewState, Expense, AuditLog, Return } from '../types';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, AreaChart, Area, PieChart, Pie, Legend } from 'recharts';
-import { Users, ShoppingBag, Truck, TrendingUp, TrendingDown, Package, Wallet, Clock, Calendar, Activity, Sparkles, ArrowRight, ArrowUpRight, CheckCircle2, Trophy, AlertCircle, Ban, RotateCcw, ShieldCheck, UserCog, ListChecks, Check, MoreHorizontal, Plus } from 'lucide-react';
+import { AreaChart, Area, CartesianGrid, Tooltip, ResponsiveContainer, XAxis, YAxis } from 'recharts';
+import { Users, ShoppingBag, TrendingUp, TrendingDown, Package, Wallet, Calendar, Activity, ArrowRight, CheckCircle2, Trophy, AlertTriangle, Plus, DollarSign, Clock, ArrowUpRight } from 'lucide-react';
 
 interface DashboardProps {
   products: Product[];
@@ -24,10 +24,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
 }) => {
   const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7));
 
-  // Financial Calculations
+  // --- DAILY SNAPSHOT LOGIC ---
+  const todayDate = new Date().toISOString().split('T')[0];
+  const todaysSales = useMemo(() => sales.filter(s => s.date.startsWith(todayDate)), [sales, todayDate]);
+  const todaysRevenue = todaysSales
+    .filter(s => s.status === 'Confirmed' || s.status === 'Delivered')
+    .reduce((acc, s) => acc + s.totalAmount, 0);
+  const todaysOrdersCount = todaysSales.length;
+  const todaysPending = todaysSales.filter(s => s.status === 'Pending').length;
+
+  // --- MONTHLY FINANCIALS ---
   const monthlySales = useMemo(() => sales.filter(s => s.date.startsWith(selectedMonth)), [sales, selectedMonth]);
   
-  // Include 'Returned' and 'Partially Returned' in gross revenue because the refund is subtracted separately
   const completedSales = useMemo(() => monthlySales.filter(s => s.status === 'Confirmed' || s.status === 'Delivered' || s.status === 'Returned' || s.status === 'Partially Returned'), [monthlySales]);
   const pendingSales = useMemo(() => monthlySales.filter(s => s.status === 'Pending'), [monthlySales]);
   
@@ -60,7 +68,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
       months.push(d.toISOString().slice(0, 7)); 
     }
     return months.map(month => {
-      // Consistent with main dashboard logic: include returned/partial orders in gross revenue
       const monthCompletedSales = sales.filter(s => s.date.startsWith(month) && (s.status === 'Confirmed' || s.status === 'Delivered' || s.status === 'Returned' || s.status === 'Partially Returned'));
       const rev = monthCompletedSales.reduce((sum, s) => sum + s.totalAmount, 0);
       return {
@@ -70,30 +77,19 @@ export const Dashboard: React.FC<DashboardProps> = ({
     });
   }, [sales]);
 
-  const readiness = useMemo(() => {
-    return [
-      { id: 'inventory', label: 'Add Inventory', isReady: products.length > 0, action: () => onNavigate('inventory') },
-      { id: 'suppliers', label: 'Connect Suppliers', isReady: suppliers.length > 0, action: () => onNavigate('suppliers') },
-      { id: 'security', label: 'Set PIN', isReady: isSecurityConfigured, action: () => onNavigate('settings') }
-    ];
-  }, [products, suppliers, isSecurityConfigured]);
-
-  const readinessScore = (readiness.filter(r => r.isReady).length / readiness.length) * 100;
-
   return (
     <div className="space-y-8 pb-10">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
         <div>
-           <h2 className="text-4xl font-serif font-bold text-slate-900 dark:text-white tracking-tight">Executive Overview</h2>
-           <p className="text-slate-500 dark:text-slate-400 text-sm">Real-time performance metrics.</p>
+           <h2 className="text-4xl font-serif font-bold text-slate-900 dark:text-white tracking-tight">Dashboard</h2>
+           <p className="text-slate-500 dark:text-slate-400 text-sm">Welcome back, {businessProfile.name || 'Admin'}.</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-           {/* Quick Actions */}
-           <button onClick={() => onNavigate('sales')} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold shadow-lg shadow-indigo-500/30 hover:bg-indigo-700 transition-all active:scale-95">
-              <Plus size={16} /> New Order
+           <button onClick={() => onNavigate('sales')} className="flex items-center gap-2 px-5 py-3 bg-indigo-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-indigo-500/30 hover:bg-indigo-700 transition-all active:scale-95">
+              <Plus size={18} /> New Sale
            </button>
-           <button onClick={() => onNavigate('inventory')} className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-700 transition-all">
-              <Package size={16} /> Add Product
+           <button onClick={() => onNavigate('inventory')} className="flex items-center gap-2 px-5 py-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-sm font-bold hover:bg-slate-50 dark:hover:bg-slate-700 transition-all">
+              <Package size={18} /> Stock
            </button>
            <div className="w-[1px] h-8 bg-slate-200 dark:bg-slate-700 mx-1 hidden md:block"></div>
            <div className="flex items-center gap-3 bg-white dark:bg-slate-900 p-2 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800">
@@ -108,75 +104,86 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
       </div>
 
-      {readinessScore < 100 && (
-        <div className="bg-slate-900 text-white p-6 rounded-[2rem] shadow-xl relative overflow-hidden animate-in slide-in-from-top-4 border border-slate-800">
-           <div className="relative z-10 flex flex-col md:flex-row items-center gap-8">
-              <div className="flex-1">
-                 <h3 className="text-lg font-bold flex items-center gap-2 mb-2"><ListChecks size={20} className="text-indigo-400"/> Setup Progress</h3>
-                 <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden mb-3">
-                    <div className="bg-indigo-500 h-full transition-all duration-1000" style={{ width: `${readinessScore}%` }}></div>
-                 </div>
-                 <div className="flex flex-wrap gap-2">
-                    {readiness.map(item => (
-                       <button 
-                         key={item.id} 
-                         onClick={item.action}
-                         disabled={item.isReady}
-                         className={`text-[10px] px-3 py-1.5 rounded-lg border font-bold flex items-center gap-2 transition-all ${item.isReady ? 'border-green-500/30 text-green-400 bg-green-500/10' : 'border-indigo-500 text-indigo-300 hover:bg-indigo-500/20'}`}
-                       >
-                          {item.isReady ? <CheckCircle2 size={12}/> : <ArrowRight size={12}/>} {item.label}
-                       </button>
-                    ))}
-                 </div>
-              </div>
-           </div>
-        </div>
-      )}
+      {/* TODAY'S SNAPSHOT - High Priority for Business Owners */}
+      <div className="bg-gradient-to-r from-slate-900 to-slate-800 dark:from-indigo-950 dark:to-slate-900 text-white p-8 rounded-[2.5rem] shadow-xl relative overflow-hidden">
+         <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none"></div>
+         
+         <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-8">
+            <div className="flex items-center gap-6">
+                <div className="p-4 bg-white/10 rounded-2xl backdrop-blur-sm">
+                    <Activity size={32} className="text-emerald-400" />
+                </div>
+                <div>
+                    <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-1">Today's Performance</p>
+                    <div className="flex items-baseline gap-2">
+                        <span className="text-4xl font-serif font-bold">৳{todaysRevenue.toLocaleString()}</span>
+                        <span className="text-sm font-medium text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded">Cash In</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div className="flex gap-8 text-center">
+                <div>
+                    <p className="text-2xl font-bold">{todaysOrdersCount}</p>
+                    <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Orders</p>
+                </div>
+                <div>
+                    <p className="text-2xl font-bold text-amber-400">{todaysPending}</p>
+                    <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Pending</p>
+                </div>
+            </div>
+         </div>
+      </div>
 
+      {/* Monthly Overview */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className="bg-white dark:bg-slate-900/50 p-8 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden group">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 rounded-full -mr-16 -mt-16 pointer-events-none"></div>
-          <div className="flex items-center gap-3 mb-4 text-indigo-600 dark:text-indigo-400">
-            <Wallet size={20} />
-            <h3 className="text-[10px] font-black uppercase tracking-widest">Net Revenue</h3>
+          <div className="flex justify-between items-start">
+            <div className="flex items-center gap-3 mb-4 text-indigo-600 dark:text-indigo-400">
+              <Wallet size={20} />
+              <h3 className="text-[10px] font-black uppercase tracking-widest">Monthly Net Revenue</h3>
+            </div>
+            <button onClick={() => onNavigate('reports')} className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-400 hover:text-indigo-600" title="View Full Report">
+                <ArrowUpRight size={16} />
+            </button>
           </div>
           <div className="flex items-baseline gap-1 relative z-10">
             <span className="text-lg opacity-50 font-serif">৳</span>
-            <p className="text-4xl font-serif font-bold text-slate-900 dark:text-white tracking-tighter">{netProductRevenue.toLocaleString()}</p>
+            <p className="text-3xl font-serif font-bold text-slate-900 dark:text-white tracking-tighter">{netProductRevenue.toLocaleString()}</p>
           </div>
+          <p className="text-[10px] text-slate-400 mt-2">After refunds deduction</p>
         </div>
 
         <div className="bg-white dark:bg-slate-900/50 p-8 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden group">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 rounded-full -mr-16 -mt-16 pointer-events-none"></div>
           <div className="flex items-center gap-3 mb-4 text-emerald-600 dark:text-emerald-400">
             <ShoppingBag size={20} />
-            <h3 className="text-[10px] font-black uppercase tracking-widest">Orders</h3>
+            <h3 className="text-[10px] font-black uppercase tracking-widest">Completed Orders</h3>
           </div>
-          <p className="text-4xl font-serif font-bold text-slate-900 dark:text-white tracking-tighter relative z-10">{completedSales.length}</p>
-          <p className="text-xs text-slate-400 mt-2">{monthlySales.filter(s=>s.status === 'Confirmed').length} Confirmed</p>
+          <p className="text-3xl font-serif font-bold text-slate-900 dark:text-white tracking-tighter relative z-10">{completedSales.length}</p>
+          <p className="text-[10px] text-slate-400 mt-2">Shipped & Finalized</p>
         </div>
 
-        <div className="bg-white dark:bg-slate-900/50 p-8 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden group" onClick={() => onNavigate('sales')} style={{cursor: 'pointer'}}>
-          <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 rounded-full -mr-16 -mt-16 pointer-events-none"></div>
+        <div className="bg-white dark:bg-slate-900/50 p-8 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden group cursor-pointer hover:border-amber-300 transition-colors" onClick={() => onNavigate('sales')}>
           <div className="flex items-center gap-3 mb-4 text-amber-600 dark:text-amber-400">
-            <Activity size={20} />
-            <h3 className="text-[10px] font-black uppercase tracking-widest">Pending</h3>
+            <Clock size={20} />
+            <h3 className="text-[10px] font-black uppercase tracking-widest">Pending Fulfillment</h3>
           </div>
-          <p className="text-4xl font-serif font-bold text-slate-900 dark:text-white tracking-tighter">{pendingSales.length}</p>
-          <p className="text-xs text-slate-400 mt-2">Needs Action</p>
+          <p className="text-3xl font-serif font-bold text-slate-900 dark:text-white tracking-tighter">{pendingSales.length}</p>
+          <p className="text-[10px] text-amber-600/70 dark:text-amber-400/70 mt-2 font-bold">Needs Attention</p>
         </div>
 
         <div className="bg-white dark:bg-slate-900/50 p-8 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden group">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/5 rounded-full -mr-16 -mt-16 pointer-events-none"></div>
           <div className="flex items-center gap-3 mb-4 text-indigo-600 dark:text-indigo-400">
             <Users size={20} />
-            <h3 className="text-[10px] font-black uppercase tracking-widest">Clients</h3>
+            <h3 className="text-[10px] font-black uppercase tracking-widest">Active Clients</h3>
           </div>
-          <p className="text-4xl font-serif font-bold text-slate-900 dark:text-white tracking-tighter relative z-10">{customers.length}</p>
+          <p className="text-3xl font-serif font-bold text-slate-900 dark:text-white tracking-tighter relative z-10">{customers.length}</p>
+          <p className="text-[10px] text-slate-400 mt-2">Total Database</p>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Revenue Chart */}
         <div className="lg:col-span-2 bg-white dark:bg-slate-900/50 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 p-8 shadow-sm">
            <div className="flex justify-between items-center mb-8">
               <h3 className="font-bold text-lg text-slate-900 dark:text-white flex items-center gap-2">
@@ -205,25 +212,26 @@ export const Dashboard: React.FC<DashboardProps> = ({
            </div>
         </div>
 
+        {/* Top Products */}
         <div className="space-y-6">
            <div className="bg-white dark:bg-slate-900/50 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 p-8 shadow-sm h-full">
               <h3 className="font-bold text-lg text-slate-900 dark:text-white flex items-center gap-2 mb-6">
-                 <Trophy size={20} className="text-amber-500" /> Top Sellers
+                 <Trophy size={20} className="text-amber-500" /> Best Sellers (Month)
               </h3>
               <div className="space-y-4">
                  {topProducts.map(([name, data], i) => (
                     <div key={name} className="flex items-center gap-4">
-                       <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-500 font-bold overflow-hidden">
+                       <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-500 font-bold overflow-hidden border border-slate-200 dark:border-slate-700">
                           {data.image ? <img src={data.image} className="w-full h-full object-cover"/> : i + 1}
                        </div>
                        <div className="flex-1 min-w-0">
                           <p className="text-sm font-bold text-slate-800 dark:text-slate-200 truncate">{name}</p>
-                          <p className="text-xs text-slate-500">{data.qty} sold</p>
+                          <p className="text-xs text-slate-500">{data.qty} units sold</p>
                        </div>
                        <p className="text-xs font-mono font-bold text-indigo-600 dark:text-indigo-400">৳{data.rev.toLocaleString()}</p>
                     </div>
                  ))}
-                 {topProducts.length === 0 && <p className="text-slate-400 text-sm italic">No sales data this month.</p>}
+                 {topProducts.length === 0 && <p className="text-slate-400 text-sm italic py-4 text-center">No sales data recorded this month.</p>}
               </div>
            </div>
         </div>

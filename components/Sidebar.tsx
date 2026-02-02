@@ -12,16 +12,17 @@ import {
   Truck,
   Wallet,
   RotateCcw,
-  FlaskConical,
   Sun,
   Moon,
   LogOut,
-  FileSpreadsheet,
-  Wifi,
   WifiOff,
   Home,
   Container,
-  X
+  X,
+  BrainCircuit,
+  ActivitySquare,
+  BookOpenCheck,
+  FileSpreadsheet
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -36,19 +37,30 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange, theme, onToggleTheme, syncStatus, onLock, onClose, businessName }) => {
-  const menuItems: { id: ViewState; label: string; icon: React.ReactNode }[] = [
-    { id: 'dashboard', label: 'Overview', icon: <LayoutDashboard size={20} /> },
-    { id: 'spreadsheet', label: 'Master Sheets', icon: <FileSpreadsheet size={20} /> },
-    { id: 'inventory', label: 'Inventory', icon: <Package size={20} /> },
-    { id: 'procurement', label: 'Procurement', icon: <Container size={20} /> },
+  // Simplified menu structure for end-users
+  const menuItems: { id: ViewState; label: string; icon: React.ReactNode; group?: string }[] = [
+    { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={20} /> },
+    
+    // Operations
     { id: 'sales', label: 'Orders', icon: <ShoppingCart size={20} /> },
-    { id: 'customers', label: 'Customers', icon: <Users size={20} /> },
+    { id: 'final_ledger', label: 'Final Sales', icon: <BookOpenCheck size={20} /> },
+    { id: 'customers', label: 'Customers (CRM)', icon: <Users size={20} /> },
+    
+    // Inventory Management
+    { id: 'inventory', label: 'Inventory Stock', icon: <Package size={20} /> },
+    { id: 'procurement', label: 'Purchasing (PO)', icon: <Container size={20} /> },
     { id: 'suppliers', label: 'Suppliers', icon: <Truck size={20} /> },
+    
+    // Finance & Admin
     { id: 'expenses', label: 'Expenses', icon: <Wallet size={20} /> },
-    { id: 'returns', label: 'Returns', icon: <RotateCcw size={20} /> },
-    { id: 'reports', label: 'Reports', icon: <BarChart3 size={20} /> },
-    { id: 'calculator', label: 'Pricing Lab', icon: <Calculator size={20} /> },
-    { id: 'tester', label: 'Diagnostics', icon: <FlaskConical size={20} /> },
+    { id: 'returns', label: 'Returns / RMA', icon: <RotateCcw size={20} /> },
+    { id: 'reports', label: 'Financial Reports', icon: <BarChart3 size={20} /> },
+    { id: 'spreadsheet', label: 'Master Grid', icon: <FileSpreadsheet size={20} /> },
+    
+    // Tools
+    { id: 'calculator', label: 'Pricing Tool', icon: <Calculator size={20} /> },
+    { id: 'advisor', label: 'AI Advisor', icon: <BrainCircuit size={20} /> },
+    { id: 'tester', label: 'System Health', icon: <ActivitySquare size={20} /> },
     { id: 'settings', label: 'Settings', icon: <SettingsIcon size={20} /> },
   ];
 
@@ -66,11 +78,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange, the
               <h1 className="font-serif font-bold text-lg text-slate-900 dark:text-white tracking-tight truncate leading-tight">
                 <span className="text-slate-800 dark:text-slate-200">THE</span> DECOR <span className="text-indigo-600">HUB</span>
               </h1>
-              <p className="text-[9px] uppercase font-black tracking-[0.2em] text-slate-400">Luxury ERP</p>
+              <p className="text-[9px] uppercase font-black tracking-[0.2em] text-slate-400">Manager</p>
             </div>
           </div>
           {onClose && (
-            <button onClick={onClose} className="md:hidden p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+            <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
               <X size={20} />
             </button>
           )}
@@ -102,7 +114,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange, the
       <div className="p-6 space-y-4 bg-white dark:bg-slate-900 z-10">
         <div className={`bg-slate-50 dark:bg-slate-800/50 p-4 rounded-2xl border ${syncStatus === 'offline' ? 'border-red-200 dark:border-red-900/30 bg-red-50 dark:bg-red-900/10' : 'border-slate-100 dark:border-slate-800'}`}>
            <div className="flex justify-between items-center mb-2">
-             <span className={`text-[10px] font-black uppercase tracking-widest ${syncStatus === 'offline' ? 'text-red-500' : 'text-slate-400'}`}>System Status</span>
+             <span className={`text-[10px] font-black uppercase tracking-widest ${syncStatus === 'offline' ? 'text-red-500' : 'text-slate-400'}`}>Status</span>
              {syncStatus === 'offline' ? (
                 <WifiOff size={14} className="text-red-500" />
              ) : (
@@ -110,7 +122,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange, the
              )}
            </div>
            <p className={`text-xs font-bold capitalize ${syncStatus === 'offline' ? 'text-red-600 dark:text-red-400' : 'text-slate-700 dark:text-slate-300'}`}>
-             {syncStatus === 'offline' ? 'Working Offline' : syncStatus}
+             {syncStatus === 'offline' ? 'Offline Mode' : 'System Active'}
            </p>
         </div>
 

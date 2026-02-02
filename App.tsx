@@ -12,20 +12,24 @@ import { WorkflowTester } from './components/WorkflowTester';
 import { PriceCalculator } from './components/PriceCalculator';
 import { Reports } from './components/Reports';
 import { Settings } from './components/Settings';
-import { AuditTrail } from './components/AuditTrail';
 import { Advisor } from './components/Advisor';
-import { SpreadsheetView } from './components/SpreadsheetView';
 import { PurchaseOrders } from './components/PurchaseOrders';
 import { TutorialGuide } from './components/TutorialGuide';
+import { FinalLedger } from './components/FinalLedger';
+import { SpreadsheetView } from './components/SpreadsheetView';
 import { ViewState, Product, Sale, Customer, AuditLog, Supplier, Expense, Return, SyncStatus, PurchaseOrder, PeriodSummary } from './types';
 import { INITIAL_PRODUCTS, INITIAL_CUSTOMERS, INITIAL_SUPPLIERS, INITIAL_EXPENSES } from './constants';
 import { ApiService } from './components/apiService';
 import { Lock, Unlock, Menu, Home, HelpCircle, X } from 'lucide-react';
 import { ToastContainer, ToastMessage } from './components/Toast';
 
+// Helper for currency precision
+const roundMoney = (amount: number) => Math.round((amount + Number.EPSILON) * 100) / 100;
+
 function App() {
+  // Set default view to 'dashboard' for launch
   const [currentView, setCurrentView] = useState<ViewState>('dashboard');
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => 
     (localStorage.getItem('hub_theme') as 'light' | 'dark') || 'light'
   );
@@ -267,11 +271,17 @@ function App() {
                const variantIndex = product.variants?.findIndex(v => v.id === item.variantId);
                if (variantIndex !== undefined && variantIndex > -1 && product.variants) {
                  const variants = [...product.variants];
-                 variants[variantIndex] = { ...variants[variantIndex], stockLevel: variants[variantIndex].stockLevel + (item.quantity * modifier) };
+                 // Ensure stock doesn't go below 0 when deducting
+                 const newStock = variants[variantIndex].stockLevel + (item.quantity * modifier);
+                 variants[variantIndex] = { 
+                     ...variants[variantIndex], 
+                     stockLevel: direction === 'deduct' ? Math.max(0, newStock) : newStock 
+                 };
                  product.variants = variants;
                }
             } else {
-               product.stockLevel += (item.quantity * modifier);
+               const newStock = product.stockLevel + (item.quantity * modifier);
+               product.stockLevel = direction === 'deduct' ? Math.max(0, newStock) : newStock;
             }
             updatedProducts[productIndex] = product;
           }
@@ -301,6 +311,19 @@ function App() {
     showToast('Inventory updated', 'success');
   };
 
+  // Performance: Batch update logic for Imports/Price Calculator
+  const handleBulkUpdateProducts = (updatedProducts: Product[]) => {
+    setProducts(prev => {
+        const productMap = new Map(prev.map(p => [p.id, p]));
+        updatedProducts.forEach(p => productMap.set(p.id, p));
+        const updated = Array.from(productMap.values());
+        ApiService.pushUpdate('products', updated);
+        return updated;
+    });
+    logAction('Bulk Update', 'Inventory', `Batch updated ${updatedProducts.length} items`);
+    showToast(`Bulk updated ${updatedProducts.length} items`, 'success');
+  };
+
   const handleDeleteProduct = (id: string) => {
     setProducts(prev => {
         const p = prev.find(i => i.id === id);
@@ -312,6 +335,7 @@ function App() {
     showToast('Product deleted', 'info');
   };
 
+  // LOGIC CHANGE: Stock is NOT deducted on Pending/Confirmed creation.
   const handleAddSale = (sale: Sale) => {
     setSales(prev => {
         const updatedSales = [sale, ...prev];
@@ -319,33 +343,32 @@ function App() {
         return updatedSales;
     });
     
+    // NOTE: Only deduct stock if status is 'Delivered' immediately (unlikely in flow, but safe to handle)
     if (sale.status === 'Delivered') {
         adjustStock(sale.items, 'deduct');
-    }
-
-    if (sale.status === 'Delivered') {
-      setCustomers(prev => {
-          const updatedCustomers = prev.map(c => {
-            if (c.id === sale.customerId) {
-              const newTotal = c.totalSpent + sale.totalAmount;
-              return { 
-                ...c, 
-                totalSpent: newTotal,
-                lastPurchaseDate: sale.date,
-                tier: calculateTier(newTotal)
-              };
-            }
-            return c;
-          });
-          ApiService.pushUpdate('customers', updatedCustomers);
-          return updatedCustomers;
-      });
+        setCustomers(prev => {
+            const updatedCustomers = prev.map(c => {
+              if (c.id === sale.customerId) {
+                const newTotal = roundMoney(c.totalSpent + sale.totalAmount);
+                return { 
+                  ...c, 
+                  totalSpent: newTotal,
+                  lastPurchaseDate: sale.date,
+                  tier: calculateTier(newTotal)
+                };
+              }
+              return c;
+            });
+            ApiService.pushUpdate('customers', updatedCustomers);
+            return updatedCustomers;
+        });
     }
     
-    logAction('Create Order', 'Sales', `Processed Order #${sale.id.slice(-6)}`, 'create');
-    showToast('Order processed successfully', 'success');
+    logAction('Create Order', 'Sales', `Created Order #${sale.id.slice(-6)} (Status: ${sale.status})`, 'create');
+    showToast('Order created successfully', 'success');
   };
 
+  // LOGIC CHANGE: Handle specific status transitions for Stock & LTV
   const handleUpdateSale = (updatedSale: Sale) => {
     const currentSales = stateRef.current.sales;
     const oldSale = currentSales.find(s => s.id === updatedSale.id);
@@ -354,34 +377,39 @@ function App() {
     const oldStatus = oldSale.status;
     const newStatus = updatedSale.status;
     
-    // Treat 'Returned' and 'Partially Returned' as consumed states (goods have left)
-    const isOldConsumed = oldStatus === 'Delivered' || oldStatus === 'Returned' || oldStatus === 'Partially Returned';
-    const isNewConsumed = newStatus === 'Delivered' || newStatus === 'Returned' || newStatus === 'Partially Returned';
-
-    // Stock Movement Logic
-    if (isOldConsumed && !isNewConsumed) {
-        // Restoring stock (e.g., Delivered -> Cancelled/Pending)
-        adjustStock(oldSale.items, 'restore');
-    } else if (!isOldConsumed && isNewConsumed) {
-        // Consuming stock (e.g., Pending -> Delivered)
+    // Check if moving TO Delivered (Deduct Stock, Recognize Revenue)
+    if (newStatus === 'Delivered' && oldStatus !== 'Delivered') {
         adjustStock(updatedSale.items, 'deduct');
-    }
-
-    setSales(prev => {
-        const updatedSales = prev.map(s => s.id === updatedSale.id ? updatedSale : s);
-        ApiService.pushUpdate('sales', updatedSales);
-        return updatedSales;
-    });
-
-    const oldContribution = isOldConsumed ? oldSale.totalAmount : 0;
-    const newContribution = isNewConsumed ? updatedSale.totalAmount : 0;
-    const ltvAdjustment = newContribution - oldContribution;
-
-    if (ltvAdjustment !== 0) {
+        
+        // Add to Customer LTV
         setCustomers(prev => {
             const updatedCustomers = prev.map(c => {
                 if (c.id === updatedSale.customerId) {
-                    const newTotal = c.totalSpent + ltvAdjustment;
+                    const newTotal = roundMoney(c.totalSpent + updatedSale.totalAmount);
+                    return { 
+                        ...c, 
+                        totalSpent: newTotal,
+                        lastPurchaseDate: updatedSale.date,
+                        tier: calculateTier(newTotal)
+                    };
+                }
+                return c;
+            });
+            ApiService.pushUpdate('customers', updatedCustomers);
+            return updatedCustomers;
+        });
+    }
+    
+    // Check if moving FROM Delivered TO something else (e.g. Cancelled)
+    // NOTE: 'Returned' is handled by Returns module specifically.
+    else if (oldStatus === 'Delivered' && newStatus === 'Cancelled') {
+        adjustStock(oldSale.items, 'restore');
+        
+        // Deduct from Customer LTV
+        setCustomers(prev => {
+            const updatedCustomers = prev.map(c => {
+                if (c.id === updatedSale.customerId) {
+                    const newTotal = roundMoney(c.totalSpent - oldSale.totalAmount);
                     return { 
                         ...c, 
                         totalSpent: newTotal,
@@ -395,6 +423,12 @@ function App() {
         });
     }
 
+    setSales(prev => {
+        const updatedSales = prev.map(s => s.id === updatedSale.id ? updatedSale : s);
+        ApiService.pushUpdate('sales', updatedSales);
+        return updatedSales;
+    });
+
     logAction('Update Order', 'Sales', `Updated Order #${updatedSale.id.slice(-6)}: ${oldStatus} -> ${newStatus}`);
     showToast(`Order status updated: ${newStatus}`, 'info');
   };
@@ -403,8 +437,26 @@ function App() {
     const sale = stateRef.current.sales.find(s => s.id === id);
     if (!sale) return;
 
+    // Only restore stock if it was previously deducted
     if (sale.status === 'Delivered' || sale.status === 'Returned' || sale.status === 'Partially Returned') {
         adjustStock(sale.items, 'restore');
+        
+        // Reverse LTV impact
+        setCustomers(prev => {
+            const updatedCustomers = prev.map(c => {
+              if (c.id === sale.customerId) {
+                const newTotal = roundMoney(c.totalSpent - sale.totalAmount);
+                return { 
+                    ...c, 
+                    totalSpent: newTotal,
+                    tier: calculateTier(newTotal)
+                };
+              }
+              return c;
+            });
+            ApiService.pushUpdate('customers', updatedCustomers);
+            return updatedCustomers;
+        });
     }
 
     setSales(prev => {
@@ -412,24 +464,6 @@ function App() {
         ApiService.pushUpdate('sales', updatedSales);
         return updatedSales;
     });
-    
-    if (sale.status === 'Delivered' || sale.status === 'Returned' || sale.status === 'Partially Returned') {
-      setCustomers(prev => {
-          const updatedCustomers = prev.map(c => {
-            if (c.id === sale.customerId) {
-              const newTotal = c.totalSpent - sale.totalAmount;
-              return { 
-                  ...c, 
-                  totalSpent: newTotal,
-                  tier: calculateTier(newTotal)
-              };
-            }
-            return c;
-          });
-          ApiService.pushUpdate('customers', updatedCustomers);
-          return updatedCustomers;
-      });
-    }
 
     logAction('Delete Order', 'Sales', `Voided Order #${sale.id.slice(-6)}`, 'delete');
     showToast('Order removed from system', 'info');
@@ -526,6 +560,24 @@ function App() {
     showToast('Expense removed', 'info');
   };
 
+  const handleDeleteReturn = (id: string) => {
+    setReturns(prev => {
+        const updated = prev.filter(r => r.id !== id);
+        ApiService.pushUpdate('returns', updated);
+        return updated;
+    });
+    logAction('Delete Return', 'RMA', `Removed return record ID: ${id.slice(-6)}`, 'delete');
+  };
+
+  const handleDeletePO = (id: string) => {
+    setPurchaseOrders(prev => {
+        const updated = prev.filter(p => p.id !== id);
+        ApiService.pushUpdate('purchaseOrders', updated);
+        return updated;
+    });
+    logAction('Delete PO', 'Procurement', `Removed PO record ID: ${id.slice(-6)}`, 'delete');
+  };
+
   const handleAddReturn = (rma: Return) => {
     setReturns(prev => {
         const updatedReturns = [rma, ...prev];
@@ -544,29 +596,32 @@ function App() {
        const relatedSale = currentSales.find(s => s.id === rma.orderId);
        
        if (relatedSale) {
-           // 1. Stock Management & Damaged Logic
-           if (rma.condition === 'Resellable') {
-               const itemToRestore = {
-                   productId: rma.productId,
-                   variantId: rma.variantId,
-                   quantity: rma.quantity
-               };
-               adjustStock([itemToRestore], 'restore');
-           } else if (rma.condition === 'Damaged') {
-               // Record Loss for Damaged Goods (COGS value)
-               handleAddExpense({
-                    id: `EXP-LOSS-DMG-${Date.now()}`,
-                    date: new Date().toISOString(),
-                    category: 'Inventory Loss',
-                    description: `Damaged Return - ${rma.productName} (#${rma.orderId.slice(-6)})`,
-                    amount: rma.unitCost * rma.quantity,
-                    paymentMethod: 'Asset Write-off',
-                    status: 'Paid',
-                    referenceId: rma.id
-               });
+           // 1. Stock Management: ONLY handle if the order was DELIVERED (stock deducted).
+           // If 'Confirmed' or 'Pending', stock was never deducted, so we don't restore or create expense for missing stock.
+           if (relatedSale.status === 'Delivered' || relatedSale.status === 'Partially Returned') {
+               if (rma.condition === 'Resellable') {
+                   const itemToRestore = {
+                       productId: rma.productId,
+                       variantId: rma.variantId,
+                       quantity: rma.quantity
+                   };
+                   adjustStock([itemToRestore], 'restore');
+               } else if (rma.condition === 'Damaged') {
+                   // Record Loss for Damaged Goods (COGS value) - Do NOT restore stock
+                   handleAddExpense({
+                        id: `EXP-LOSS-DMG-${Date.now()}`,
+                        date: new Date().toISOString(),
+                        category: 'Inventory Loss',
+                        description: `Damaged Return - ${rma.productName} (#${rma.orderId.slice(-6)})`,
+                        amount: roundMoney(rma.unitCost * rma.quantity),
+                        paymentMethod: 'Asset Write-off',
+                        status: 'Paid',
+                        referenceId: rma.id
+                   });
+               }
            }
 
-           // 2. Expense for Refusal
+           // 2. Expense for Delivery Refusal/Logistics Loss (Applies even if order wasn't delivered successfully, e.g. refusal)
            if (rma.isDeliveryRefused && (rma.deliveryLossAmount || 0) > 0) {
                handleAddExpense({
                     id: `EXP-LOSS-REF-${Date.now()}`,
@@ -580,11 +635,11 @@ function App() {
                });
            }
            
-           // 3. Customer LTV Update (Deduct refund)
+           // 3. Customer LTV Update (Deduct refund amount from their history)
            setCustomers(prev => {
                 const updated = prev.map(c => {
                     if (c.id === relatedSale.customerId) {
-                        const newTotal = Math.max(0, c.totalSpent - rma.refundAmount);
+                        const newTotal = roundMoney(Math.max(0, c.totalSpent - rma.refundAmount));
                         return { ...c, totalSpent: newTotal, tier: calculateTier(newTotal) };
                     }
                     return c;
@@ -593,7 +648,7 @@ function App() {
                 return updated;
            });
 
-           // 4. Update Sale Status - Partial vs Full Return Logic
+           // 4. Update Sale Status based on total items returned vs total ordered
            const allOrderReturns = [...currentReturns, { ...rma, status: 'Approved' }].filter(r => r.orderId === relatedSale.id && r.status === 'Approved');
            const totalReturnedQty = allOrderReturns.reduce((sum, r) => sum + r.quantity, 0);
            const totalOrderQty = relatedSale.items.reduce((sum, i) => sum + i.quantity, 0);
@@ -603,6 +658,13 @@ function App() {
                newSaleStatus = 'Returned';
            } else if (totalReturnedQty > 0) {
                newSaleStatus = 'Partially Returned';
+           }
+
+           // If it was Confirmed/Pending and we are returning, it means it's basically Cancelled/Returned.
+           if (relatedSale.status === 'Pending' || relatedSale.status === 'Confirmed') {
+                newSaleStatus = totalReturnedQty >= totalOrderQty ? 'Returned' : 'Confirmed'; // Keep confirmed if partial, or specific logic? 
+                // Simplification: If not delivered, usually it's a full cancellation or "Returned" status is fine.
+                newSaleStatus = 'Returned'; 
            }
 
            setSales(prev => {
@@ -658,7 +720,7 @@ function App() {
                variants[vIndex] = { 
                    ...variants[vIndex], 
                    stockLevel: currentStock + incomingQty,
-                   costPrice: parseFloat(newAvgCost.toFixed(2))
+                   costPrice: roundMoney(newAvgCost)
                };
                product.variants = variants;
              }
@@ -671,7 +733,7 @@ function App() {
              const newAvgCost = ((currentStock * currentCost) + (incomingQty * incomingCost)) / (currentStock + incomingQty);
 
              product.stockLevel += incomingQty;
-             product.costPrice = parseFloat(newAvgCost.toFixed(2));
+             product.costPrice = roundMoney(newAvgCost);
           }
           updatedProducts[productIndex] = product;
         }
@@ -788,10 +850,11 @@ function App() {
   }
 
   return (
-    <div className="flex h-screen bg-slate-100 dark:bg-slate-950 overflow-hidden selection:bg-indigo-500/30 relative custom-scrollbar">
+    <div className="flex h-screen bg-slate-100 dark:bg-slate-950 overflow-hidden selection:bg-indigo-500/30 relative custom-scrollbar flex-col">
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
       
-      <div className="fixed bottom-6 right-6 z-[90]">
+      {/* Help Button - Always Visible */}
+      <div className="fixed bottom-6 right-6 md:bottom-10 md:right-10 z-[90]">
         <button 
           onClick={() => setShowTutorial(!showTutorial)}
           className={`p-4 rounded-full shadow-2xl transition-all duration-300 hover:scale-110 active:scale-95 ${
@@ -807,9 +870,10 @@ function App() {
       
       {showTutorial && <TutorialGuide view={currentView} onClose={() => setShowTutorial(false)} />}
 
-      <div className="md:hidden fixed top-0 left-0 right-0 h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 z-30 flex items-center justify-between px-4 shadow-sm">
+      {/* Top Header - Always Visible */}
+      <div className="fixed top-0 left-0 right-0 h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 z-30 flex items-center justify-between px-4 shadow-sm">
          <div className="flex items-center gap-3">
-            <button onClick={() => setIsMobileMenuOpen(true)} className="p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors">
+            <button onClick={() => setIsSidebarOpen(true)} className="p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors">
               <Menu size={24} />
             </button>
             <div className="flex items-center gap-2">
@@ -821,52 +885,42 @@ function App() {
          </div>
       </div>
 
-      <div className="w-[280px] shrink-0 hidden md:block h-full shadow-xl z-20">
-        <Sidebar 
-          currentView={currentView} 
-          onViewChange={setCurrentView} 
-          theme={theme}
-          onToggleTheme={toggleTheme}
-          syncStatus={isOnline ? syncStatus : 'offline'}
-          onLock={() => setIsLocked(true)}
-          businessName={businessProfile.name}
-        />
-      </div>
-
-      {isMobileMenuOpen && (
-        <div className="fixed inset-0 z-50 md:hidden">
-          <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm transition-opacity" onClick={() => setIsMobileMenuOpen(false)} />
+      {/* Sidebar Drawer - Works on Mobile & Desktop */}
+      {isSidebarOpen && (
+        <div className="fixed inset-0 z-50">
+          <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm transition-opacity" onClick={() => setIsSidebarOpen(false)} />
           <div className="absolute top-0 left-0 bottom-0 w-[280px] bg-white dark:bg-slate-900 animate-in slide-in-from-left duration-300 shadow-2xl flex flex-col">
              <Sidebar 
                currentView={currentView} 
-               onViewChange={(view) => { setCurrentView(view); setIsMobileMenuOpen(false); }}
+               onViewChange={(view) => { setCurrentView(view); setIsSidebarOpen(false); }}
                theme={theme}
                onToggleTheme={toggleTheme}
                syncStatus={isOnline ? syncStatus : 'offline'}
                onLock={() => setIsLocked(true)}
-               onClose={() => setIsMobileMenuOpen(false)}
+               onClose={() => setIsSidebarOpen(false)}
                businessName={businessProfile.name}
              />
           </div>
         </div>
       )}
 
-      <main className="flex-1 overflow-y-auto overflow-x-hidden relative scroll-smooth pt-16 md:pt-0 custom-scrollbar">
-        <div className="min-h-full p-4 md:p-8 lg:p-12 pb-32">
+      {/* Main Content Area - Full Screen Layout */}
+      <main className="flex-1 overflow-y-auto overflow-x-hidden relative scroll-smooth pt-16 custom-scrollbar">
+        <div className="min-h-full p-4 md:p-6 pb-32 max-w-[1920px] mx-auto">
           {currentView === 'dashboard' && <Dashboard products={products} sales={sales} customers={customers} suppliers={suppliers} expenses={expenses} returns={returns} logs={logs} onNavigate={setCurrentView} theme={theme} businessProfile={businessProfile} isSecurityConfigured={pin !== '1234'} />}
-          {currentView === 'spreadsheet' && <SpreadsheetView products={products} sales={sales} customers={customers} suppliers={suppliers} expenses={expenses} onUpdateProduct={handleUpdateProduct} />}
           {currentView === 'inventory' && <Inventory products={products} suppliers={suppliers} onAddProduct={handleAddProduct} onUpdateProduct={handleUpdateProduct} onDeleteProduct={handleDeleteProduct} canUndo={false} canRedo={false} onUndo={() => {}} onRedo={() => {}} notify={showToast} />}
           {currentView === 'procurement' && <PurchaseOrders purchaseOrders={purchaseOrders} products={products} suppliers={suppliers} onCreatePO={handleCreatePO} onReceivePO={handleReceivePO} companyProfile={businessProfile} />}
-          {currentView === 'sales' && <Sales sales={sales} products={products} customers={customers} onAddSale={handleAddSale} onUpdateSale={handleUpdateSale} onDeleteSale={handleDeleteSale} onAddCustomer={handleAddCustomer} onUndo={() => {}} onRedo={() => {}} onCommit={() => {}} canUndo={false} canRedo={false} isDirty={false} companyProfile={businessProfile} notify={showToast} onRequestReturn={handleRequestReturn} />}
+          {currentView === 'sales' && <Sales sales={sales} products={products} customers={customers} onAddSale={handleAddSale} onUpdateSale={handleUpdateSale} onDeleteSale={handleDeleteSale} onAddCustomer={handleAddCustomer} onUndo={() => {}} onRedo={() => {}} onCommit={() => {}} canUndo={false} canRedo={false} isDirty={false} companyProfile={businessProfile} notify={showToast} onRequestReturn={handleRequestReturn} returns={returns} />}
+          {currentView === 'final_ledger' && <FinalLedger sales={sales} returns={returns} />}
+          {currentView === 'spreadsheet' && <SpreadsheetView products={products} sales={sales} customers={customers} suppliers={suppliers} expenses={expenses} returns={returns} onUpdateProduct={handleUpdateProduct} />}
           {currentView === 'customers' && <Customers customers={customers} sales={sales} onAdd={handleAddCustomer} onUpdate={handleUpdateCustomer} onDelete={handleDeleteCustomer} canUndo={false} canRedo={false} onUndo={() => {}} onRedo={() => {}} />}
           {currentView === 'suppliers' && <Suppliers suppliers={suppliers} products={products} onAdd={handleAddSupplier} onUpdate={handleUpdateSupplier} onDelete={handleDeleteSupplier} canUndo={false} canRedo={false} onUndo={() => {}} onRedo={() => {}} />}
           {currentView === 'expenses' && <Expenses expenses={expenses} onAdd={handleAddExpense} onUpdate={handleUpdateExpense} onDelete={handleDeleteExpense} />}
           {currentView === 'returns' && <Returns returns={returns} sales={sales} onAdd={handleAddReturn} onUpdateStatus={handleUpdateReturnStatus} onAddExpense={handleAddExpense} preSelectedOrderId={preSelectedOrderId} />}
           {currentView === 'reports' && <Reports sales={sales} products={products} customers={customers} expenses={expenses} returns={returns} periodSummaries={periodSummaries} onUpdateSummaries={handleUpdatePeriodSummaries} theme={theme} />}
-          {currentView === 'calculator' && <PriceCalculator products={products} onUpdateProduct={handleUpdateProduct} />}
-          {currentView === 'tester' && <WorkflowTester onAddProduct={handleAddProduct} onAddSale={handleAddSale} onAddReturn={handleAddReturn} onUpdateReturnStatus={handleUpdateReturnStatus} onAddCustomer={handleAddCustomer} onAddSupplier={handleAddSupplier} onAddExpense={handleAddExpense} onUpdateSale={handleUpdateSale} onCreatePO={handleCreatePO} onReceivePO={handleReceivePO} onDeleteProduct={handleDeleteProduct} onDeleteSale={handleDeleteSale} onDeleteCustomer={handleDeleteCustomer} onDeleteSupplier={handleDeleteSupplier} onDeleteExpense={handleDeleteExpense} />}
+          {currentView === 'calculator' && <PriceCalculator products={products} onUpdateProduct={handleUpdateProduct} onBulkUpdateProduct={handleBulkUpdateProducts} />}
+          {currentView === 'tester' && <WorkflowTester onAddProduct={handleAddProduct} onAddSale={handleAddSale} onAddReturn={handleAddReturn} onUpdateReturnStatus={handleUpdateReturnStatus} onAddCustomer={handleAddCustomer} onAddSupplier={handleAddSupplier} onAddExpense={handleAddExpense} onUpdateSale={handleUpdateSale} onCreatePO={handleCreatePO} onReceivePO={handleReceivePO} onDeleteProduct={handleDeleteProduct} onDeleteSale={handleDeleteSale} onDeleteCustomer={handleDeleteCustomer} onDeleteSupplier={handleDeleteSupplier} onDeleteExpense={handleDeleteExpense} onDeleteReturn={handleDeleteReturn} onDeletePO={handleDeletePO} />}
           {currentView === 'advisor' && <Advisor products={products} sales={sales} />}
-          {currentView === 'audit' && <AuditTrail logs={logs} />}
           {currentView === 'settings' && <Settings products={products} sales={sales} customers={customers} suppliers={suppliers} expenses={expenses} returns={returns} onFactoryReset={handleFactoryReset} onPurgeSales={handlePurgeSales} onPurgeInventory={handlePurgeInventory} businessProfile={businessProfile} onUpdateProfile={handleUpdateProfile} onUpdatePin={handleUpdatePin} />}
         </div>
       </main>

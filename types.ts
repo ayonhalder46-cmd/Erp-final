@@ -117,6 +117,7 @@ export type ViewState =
   | 'dashboard' 
   | 'inventory' 
   | 'sales' 
+  | 'final_ledger'
   | 'customers' 
   | 'suppliers' 
   | 'expenses' 

@@ -177,13 +177,29 @@ export const Inventory: React.FC<InventoryProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!formData.name) { setErrorMsg("Product Name is required"); return; }
+    
+    // Strict Case-Insensitive SKU Check
     if (!formData.hasVariants) {
-      const existingProduct = products.find(p => p.sku === formData.sku && p.id !== editingId);
-      if (existingProduct) {
-        setErrorMsg(`SKU "${formData.sku}" is already in use.`);
+      if (!formData.sku) { setErrorMsg("SKU is required"); return; }
+      const skuConflict = products.find(p => 
+        p.sku.toLowerCase() === formData.sku?.toLowerCase() && 
+        p.id !== editingId
+      );
+      if (skuConflict) {
+        setErrorMsg(`SKU "${formData.sku}" is already in use by "${skuConflict.name}".`);
         return;
       }
+    } else {
+        // Variant SKU check
+        const variantSkus = formData.variants?.map(v => v.sku.toLowerCase()) || [];
+        const uniqueSkus = new Set(variantSkus);
+        if (uniqueSkus.size !== variantSkus.length) {
+            setErrorMsg("Duplicate SKUs found within variants.");
+            return;
+        }
     }
+
     const finalProduct = { ...formData, id: editingId || Date.now().toString() } as Product;
     if (editingId) {
       onUpdateProduct(finalProduct);
@@ -368,7 +384,7 @@ export const Inventory: React.FC<InventoryProps> = ({
             </div>
             
             <form onSubmit={handleSubmit} className="p-10 space-y-8 overflow-y-auto max-h-[75vh] custom-scrollbar">
-              {errorMsg && <div className="bg-red-50 text-red-600 p-4 rounded-xl text-sm font-bold">{errorMsg}</div>}
+              {errorMsg && <div className="bg-red-50 text-red-600 p-4 rounded-xl text-sm font-bold animate-pulse">{errorMsg}</div>}
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
                 <div className="lg:col-span-8 space-y-6">
                     <div className="grid grid-cols-2 gap-4">
@@ -399,19 +415,19 @@ export const Inventory: React.FC<InventoryProps> = ({
                                 </div>
                                 <div>
                                     <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Cost (৳)</label>
-                                    <input type="number" className="w-full p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs" value={formData.costPrice} onChange={e => setFormData({...formData, costPrice: Number(e.target.value)})} />
+                                    <input type="number" min="0" className="w-full p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs" value={formData.costPrice} onChange={e => setFormData({...formData, costPrice: Math.max(0, Number(e.target.value))})} />
                                 </div>
                                 <div>
                                     <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Price (৳)</label>
-                                    <input type="number" className="w-full p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-indigo-600" value={formData.sellingPrice} onChange={e => setFormData({...formData, sellingPrice: Number(e.target.value)})} />
+                                    <input type="number" min="0" className="w-full p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-indigo-600" value={formData.sellingPrice} onChange={e => setFormData({...formData, sellingPrice: Math.max(0, Number(e.target.value))})} />
                                 </div>
                                 <div>
                                     <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Stock</label>
-                                    <input type="number" className="w-full p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-mono" value={formData.stockLevel} onChange={e => setFormData({...formData, stockLevel: Number(e.target.value)})} />
+                                    <input type="number" min="0" className="w-full p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-mono" value={formData.stockLevel} onChange={e => setFormData({...formData, stockLevel: Math.max(0, Number(e.target.value))})} />
                                 </div>
                                 <div>
                                     <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Min Alert</label>
-                                    <input type="number" className="w-full p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-mono" value={formData.minStockLevel} onChange={e => setFormData({...formData, minStockLevel: Number(e.target.value)})} />
+                                    <input type="number" min="0" className="w-full p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-mono" value={formData.minStockLevel} onChange={e => setFormData({...formData, minStockLevel: Math.max(0, Number(e.target.value))})} />
                                 </div>
                             </div>
                         )}
@@ -478,9 +494,9 @@ export const Inventory: React.FC<InventoryProps> = ({
                                       <tr key={i}>
                                           <td className="p-2"><input className="w-full p-2 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700" value={v.name} onChange={e => handleUpdateVariant(i, 'name', e.target.value)} placeholder="Variant Name" /></td>
                                           <td className="p-2"><input className="w-full p-2 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-mono" value={v.sku} onChange={e => handleUpdateVariant(i, 'sku', e.target.value)} /></td>
-                                          <td className="p-2"><input type="number" className="w-full p-2 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700" value={v.costPrice} onChange={e => handleUpdateVariant(i, 'costPrice', Number(e.target.value))} /></td>
-                                          <td className="p-2"><input type="number" className="w-full p-2 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold text-indigo-600" value={v.sellingPrice} onChange={e => handleUpdateVariant(i, 'sellingPrice', Number(e.target.value))} /></td>
-                                          <td className="p-2"><input type="number" className="w-full p-2 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-mono" value={v.stockLevel} onChange={e => handleUpdateVariant(i, 'stockLevel', Number(e.target.value))} /></td>
+                                          <td className="p-2"><input type="number" min="0" className="w-full p-2 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700" value={v.costPrice} onChange={e => handleUpdateVariant(i, 'costPrice', Math.max(0, Number(e.target.value)))} /></td>
+                                          <td className="p-2"><input type="number" min="0" className="w-full p-2 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold text-indigo-600" value={v.sellingPrice} onChange={e => handleUpdateVariant(i, 'sellingPrice', Math.max(0, Number(e.target.value)))} /></td>
+                                          <td className="p-2"><input type="number" min="0" className="w-full p-2 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-mono" value={v.stockLevel} onChange={e => handleUpdateVariant(i, 'stockLevel', Math.max(0, Number(e.target.value)))} /></td>
                                           <td className="p-2 text-center"><button type="button" onClick={() => handleRemoveVariant(i)} className="text-slate-400 hover:text-red-500"><Trash2 size={14}/></button></td>
                                       </tr>
                                   ))}
