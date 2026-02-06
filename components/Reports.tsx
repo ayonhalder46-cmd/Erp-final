@@ -128,7 +128,7 @@ export const Reports: React.FC<ReportsProps> = ({ sales, products, customers, ex
 
     // 1. Inventory Rows
     const categoryHtml = Object.entries(inventoryMetrics.categoryBreakdown)
-        .map(([cat, data]) => `
+        .map(([cat, data]: [string, { qty: number, costVal: number, retailVal: number }]) => `
             <tr>
                 <td>${cat}</td>
                 <td style="text-align:center">${data.qty}</td>

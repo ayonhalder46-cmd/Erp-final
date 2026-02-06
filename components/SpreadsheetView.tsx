@@ -283,6 +283,7 @@ export const SpreadsheetView: React.FC<SpreadsheetViewProps> = ({
     let headers: string[] = [];
     let allData: any[] = [];
     let rows: React.ReactNode[] = [];
+    let summary: React.ReactNode = null;
 
     if (activeTab === 'inventory') {
       headers = ["SKU", "Product/Variant", "Category (Edit)", "Supplier (Edit)", "Stock (Edit)", "Min Stock (Edit)", "Cost (Edit ৳)", "Price (Edit ৳)", "Asset Value (৳)"];
@@ -382,6 +383,11 @@ export const SpreadsheetView: React.FC<SpreadsheetViewProps> = ({
         </tr>
       ));
     } else if (activeTab === 'financials') {
+      let totalGross = 0;
+      let totalRefunds = 0;
+      let totalNet = 0;
+      let totalProfit = 0;
+
       rows = paginatedData.map((s: Sale) => {
         const orderReturns = returns.filter(r => r.orderId === s.id && r.status === 'Approved');
         const refundAmount = orderReturns.reduce((acc, r) => acc + r.refundAmount, 0);
@@ -391,6 +397,9 @@ export const SpreadsheetView: React.FC<SpreadsheetViewProps> = ({
         const netCost = s.totalCost - returnCostRestored;
         const netProfit = netRev - netCost;
 
+        // Sum only visible rows for the footer of this page (or summing allData is better?)
+        // Usually spreadsheets sum what is visible or filtered. Let's sum ALL filtered data for the footer.
+        
         return (
           <tr key={s.id} className="hover:bg-indigo-50/50 dark:hover:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700 bg-emerald-50/10 dark:bg-emerald-900/5">
             <Cell className="font-mono text-indigo-500">#{s.id.slice(-6)}</Cell>
@@ -403,6 +412,33 @@ export const SpreadsheetView: React.FC<SpreadsheetViewProps> = ({
           </tr>
         );
       });
+
+      // Calculate totals for ALL data currently filtered, not just the page
+      allData.forEach((s: Sale) => {
+        const orderReturns = returns.filter(r => r.orderId === s.id && r.status === 'Approved');
+        const refundAmount = orderReturns.reduce((acc, r) => acc + r.refundAmount, 0);
+        const returnCostRestored = orderReturns.filter(r => r.condition === 'Resellable').reduce((acc, r) => acc + (r.unitCost * r.quantity), 0);
+        
+        const netRev = s.totalAmount - refundAmount;
+        const netCost = s.totalCost - returnCostRestored;
+        const netProfit = netRev - netCost;
+
+        totalGross += s.totalAmount;
+        totalRefunds += refundAmount;
+        totalNet += netRev;
+        totalProfit += netProfit;
+      });
+
+      summary = (
+        <tr className="bg-slate-100 dark:bg-slate-800 font-black border-t-2 border-slate-300 dark:border-slate-600">
+            <td colSpan={3} className="px-4 py-3 text-right text-xs uppercase tracking-widest text-slate-500">Total (Filtered)</td>
+            <td className="px-4 py-3 text-right text-xs text-slate-500">{totalGross.toLocaleString()}</td>
+            <td className="px-4 py-3 text-right text-xs text-red-500">{totalRefunds > 0 ? `(${totalRefunds.toLocaleString()})` : '-'}</td>
+            <td className="px-4 py-3 text-right text-xs text-indigo-600 dark:text-indigo-400">{totalNet.toLocaleString()}</td>
+            <td className="px-4 py-3 text-right text-xs text-emerald-600 dark:text-emerald-400">{totalProfit.toLocaleString()}</td>
+        </tr>
+      );
+
     } else if (activeTab === 'customers') {
       rows = paginatedData.map((c: Customer) => (
         <tr key={c.id} className="hover:bg-indigo-50/50 dark:hover:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700">
@@ -472,6 +508,7 @@ export const SpreadsheetView: React.FC<SpreadsheetViewProps> = ({
                 </thead>
                 <tbody className="bg-white dark:bg-slate-900 font-mono text-xs">
                   {rows}
+                  {summary}
                 </tbody>
               </table>
             </div>
