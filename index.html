@@ -3,154 +3,96 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#0f172a" />
-    <meta name="description" content="DécorHub Enterprise ERP - Comprehensive Business Management System for Retail & Inventory.">
-    
-    <!-- 
-      SECURITY POLICY UPDATE:
-      1. 'unsafe-eval' is REQUIRED for cdn.tailwindcss.com to compile CSS in the browser.
-      2. 'unsafe-inline' is required for the style tags Tailwind injects.
-      3. blob: and data: are required for React workers and image previews.
-    -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https://cdn.tailwindcss.com https://esm.sh https://fonts.googleapis.com https://fonts.gstatic.com https://cdn.icons-png.flaticon.com;">
+    <meta name="description" content="DécorHub Enterprise ERP - Professional Business Management.">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https://cdn.tailwindcss.com https://esm.sh https://fonts.googleapis.com https://fonts.gstatic.com https://cdn-icons-png.flaticon.com;">
 
-    <!-- Windows Specific Metadata -->
-    <meta name="application-name" content="DécorHub ERP">
-    <meta name="msapplication-TileColor" content="#4f46e5">
-    <meta name="msapplication-tap-highlight" content="no">
-    
-    <title>TheDécorHub Enterprise Edition</title>
-    <link rel="manifest" href="/manifest.json">
+    <title>TheDécorHub ERP</title>
     <link rel="icon" type="image/png" href="https://cdn-icons-png.flaticon.com/512/3176/3176363.png">
     
-    <!-- TAILWIND CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- FONTS -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Playfair+Display:wght@700;800&display=swap" rel="stylesheet">
     
     <style>
       body {
         text-rendering: optimizeLegibility;
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
+        user-select: none; /* Prevent accidental text selection on mobile */
       }
       
-      /* Native-like Scrollbar for Windows/Desktop */
-      .custom-scrollbar::-webkit-scrollbar {
-        width: 6px;
-        height: 6px;
+      /* Smooth scrolling for mobile */
+      .custom-scrollbar {
+        -webkit-overflow-scrolling: touch;
       }
-      .custom-scrollbar::-webkit-scrollbar-track {
-        background: transparent;
+
+      /* Desktop Scrollbar */
+      @media (min-width: 1024px) {
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 20px; border: 2px solid transparent; background-clip: content-box; }
+        .dark ::-webkit-scrollbar-thumb { background-color: #334155; }
       }
-      .custom-scrollbar::-webkit-scrollbar-thumb {
-        background-color: rgba(156, 163, 175, 0.5);
-        border-radius: 20px;
-      }
-      .dark .custom-scrollbar::-webkit-scrollbar-thumb {
-        background-color: rgba(71, 85, 105, 0.5);
-      }
-      .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-        background-color: rgba(99, 102, 241, 0.8);
+
+      /* Mobile Table Handling: Prevent Squashing */
+      .responsive-table-container {
+        width: 100%;
+        overflow-x: auto;
+        position: relative;
+        background: inherit;
       }
       
-      /* Global Scrollbar overrides for the main body to feel like an app */
-      ::-webkit-scrollbar {
-        width: 8px;
-        height: 8px;
+      table {
+        min-width: 700px; /* Minimum width to prevent column collapse on mobile */
       }
-      ::-webkit-scrollbar-track {
-        background: transparent;
+
+      /* Android Pull-to-refresh color */
+      @media (max-width: 768px) {
+        .mobile-bottom-nav {
+            box-shadow: 0 -4px 12px rgba(0,0,0,0.1);
+        }
       }
-      ::-webkit-scrollbar-thumb {
-        background-color: #cbd5e1;
-        border-radius: 4px;
-        border: 2px solid transparent;
-        background-clip: content-box;
-      }
-      .dark ::-webkit-scrollbar-thumb {
-        background-color: #334155;
-      }
-      ::-webkit-scrollbar-thumb:hover {
-        background-color: #94a3b8;
+
+      /* Poco X3 Pro Screen Fix: Margin for centered content */
+      .app-container {
+        max-width: 100vw;
+        overflow-x: hidden;
       }
     </style>
 
     <script>
-      // Initial theme check to prevent flash
       if (localStorage.getItem('hub_theme') === 'dark' || (!('hub_theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
         document.documentElement.classList.add('dark');
-      } else {
-        document.documentElement.classList.remove('dark');
       }
-
       tailwind.config = {
         darkMode: 'class',
         theme: {
           extend: {
-            fontFamily: {
-              sans: ['Inter', 'sans-serif'],
-              serif: ['Playfair Display', 'serif'],
-            },
+            fontFamily: { sans: ['Inter', 'sans-serif'], serif: ['Playfair Display', 'serif'] },
             colors: {
-              slate: {
-                50: '#f8fafc',
-                100: '#f1f5f9',
-                200: '#e2e8f0',
-                300: '#cbd5e1',
-                400: '#94a3b8',
-                500: '#64748b',
-                600: '#475569',
-                700: '#334155',
-                800: '#1e293b',
-                900: '#0f172a',
-                950: '#020617',
-              },
-              indigo: {
-                50: '#eef2ff',
-                100: '#e0e7ff',
-                200: '#c7d2fe',
-                300: '#a5b4fc',
-                400: '#818cf8',
-                500: '#6366f1',
-                600: '#4f46e5',
-                700: '#4338ca',
-                800: '#3730a3',
-                900: '#312e81',
-                950: '#1e1b4b',
-              },
-            },
-            animation: {
-              'pulse-subtle': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-              'slide-up': 'slideUp 0.3s ease-out forwards',
-            },
-            keyframes: {
-              slideUp: {
-                '0%': { transform: 'translateY(10px)', opacity: 0 },
-                '100%': { transform: 'translateY(0)', opacity: 1 },
-              }
+              slate: { 950: '#020617' },
+              indigo: { 600: '#4f46e5' }
             }
           }
         }
       }
     </script>
-  <script type="importmap">
+    <script type="importmap">
 {
   "imports": {
     "@google/genai": "https://esm.sh/@google/genai@^1.34.0",
     "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
     "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
     "recharts": "https://esm.sh/recharts@^3.6.0",
-    "html2pdf.js": "https://esm.sh/html2pdf.js@0.10.1",
     "react/": "https://esm.sh/react@^19.2.3/",
-    "react": "https://esm.sh/react@^19.2.3"
+    "react": "https://esm.sh/react@^19.2.3",
+    "html2pdf.js": "https://esm.sh/html2pdf.js@^0.14.0"
   }
 }
 </script>
-</head>
-  <body class="bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-300 overflow-x-hidden selection:bg-indigo-500 selection:text-white antialiased">
+  </head>
+  <body class="bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 selection:bg-indigo-500 overflow-x-hidden">
     <div id="root"></div>
     <script type="module" src="./index.tsx"></script>
   </body>
