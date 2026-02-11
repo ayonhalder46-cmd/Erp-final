@@ -302,11 +302,9 @@ function App() {
 
       <main className="flex-1 overflow-y-auto pt-16 md:pt-0 md:pl-64 custom-scrollbar">
         <div className="p-4 md:p-8 pb-32 max-w-full mx-auto">
-          {/* Dashboard does not accept suppliers or isSecurityConfigured props in DashboardProps */}
           {currentView === 'dashboard' && <Dashboard products={products} sales={sales} customers={customers} expenses={expenses} returns={returns} onNavigate={setCurrentView} theme={theme} businessProfile={businessProfile} />}
           {currentView === 'inventory' && <Inventory products={products} suppliers={suppliers} onAddProduct={(p)=> { setProducts([...products, p]); ApiService.pushUpdate('products', [...products, p]); }} onUpdateProduct={(p)=>{ const u = products.map(x=>x.id===p.id?p:x); setProducts(u); ApiService.pushUpdate('products', u); }} onDeleteProduct={(id)=> { const u = products.filter(x=>x.id!==id); setProducts(u); ApiService.pushUpdate('products', u); }} canUndo={false} canRedo={false} onUndo={()=>{}} onRedo={()=>{}} notify={showToast} />}
           {currentView === 'procurement' && <PurchaseOrders purchaseOrders={purchaseOrders} products={products} suppliers={suppliers} onCreatePO={(po)=>{ const u = [po, ...purchaseOrders]; setPurchaseOrders(u); ApiService.pushUpdate('purchaseOrders', u); }} onReceivePO={(po)=>{
-             // Receives PO: Updates stock and avg cost, but DOES NOT impact profit as it's an investment.
              setProducts(prev => {
                 const updated = [...prev];
                 po.items.forEach(item => {
@@ -314,7 +312,6 @@ function App() {
                     if(idx > -1) {
                         const p = {...updated[idx]};
                         p.stockLevel += item.quantity;
-                        // Simplified AVCO
                         p.costPrice = roundMoney(((updated[idx].stockLevel * updated[idx].costPrice) + (item.quantity * item.unitCost)) / (updated[idx].stockLevel + item.quantity));
                         updated[idx] = p;
                     }
@@ -323,7 +320,6 @@ function App() {
                 return updated;
              });
              setPurchaseOrders(prev => {
-                // Cast status literal to PurchaseOrder['status'] to prevent string widening issues in setPurchaseOrders
                 const u = prev.map(x => x.id === po.id ? ({...x, status: 'Received'} as PurchaseOrder) : x);
                 ApiService.pushUpdate('purchaseOrders', u);
                 return u;
@@ -331,13 +327,12 @@ function App() {
              showToast('Stock received into inventory', 'success');
           }} companyProfile={businessProfile} />}
           {currentView === 'sales' && <Sales sales={sales} products={products} customers={customers} onAddSale={handleAddSale} onUpdateSale={handleUpdateSale} onDeleteSale={(id)=>{ setSales(sales.filter(x=>x.id!==id)); ApiService.pushUpdate('sales', sales.filter(x=>x.id!==id)); }} onAddCustomer={(c)=>{ setCustomers([...customers, c]); ApiService.pushUpdate('customers', [...customers, c]); }} onUndo={()=>{}} onRedo={()=>{}} onCommit={()=>{}} canUndo={false} canRedo={false} isDirty={false} companyProfile={businessProfile} notify={showToast} onRequestReturn={setPreSelectedOrderId as any} returns={returns} />}
-          {currentView === 'final_ledger' && <FinalLedger sales={sales} returns={returns} />}
+          {currentView === 'final_ledger' && <FinalLedger sales={sales} returns={returns} expenses={expenses} />}
           {currentView === 'spreadsheet' && <SpreadsheetView products={products} sales={sales} customers={customers} suppliers={suppliers} expenses={expenses} returns={returns} onUpdateProduct={(p)=>{ const u = products.map(x=>x.id===p.id?p:x); setProducts(u); ApiService.pushUpdate('products', u); }} />}
           {currentView === 'customers' && <Customers customers={customers} sales={sales} onAdd={(c)=>{ setCustomers([...customers, c]); ApiService.pushUpdate('customers', [...customers, c]); }} onUpdate={(c)=>{ const u = customers.map(x=>x.id===c.id?c:x); setCustomers(u); ApiService.pushUpdate('customers', u); }} onDelete={(id)=>{ setCustomers(customers.filter(x=>x.id!==id)); ApiService.pushUpdate('customers', customers.filter(x=>x.id!==id)); }} canUndo={false} canRedo={false} onUndo={()=>{}} onRedo={()=>{}} />}
           {currentView === 'suppliers' && <Suppliers suppliers={suppliers} products={products} onAdd={(s)=>{ setSuppliers([...suppliers, s]); ApiService.pushUpdate('suppliers', [...suppliers, s]); }} onUpdate={(s)=>{ const u = suppliers.map(x=>x.id===s.id?s:x); setSuppliers(u); ApiService.pushUpdate('suppliers', u); }} onDelete={(id)=>{ setSuppliers(suppliers.filter(x=>x.id!==id)); ApiService.pushUpdate('suppliers', suppliers.filter(x=>x.id!==id)); }} canUndo={false} canRedo={false} onUndo={()=>{}} onRedo={()=>{}} />}
           {currentView === 'expenses' && <Expenses expenses={expenses} onAdd={handleAddExpense} onUpdate={(e)=>{ const u = expenses.map(x=>x.id===e.id?e:x); setExpenses(u); ApiService.pushUpdate('expenses', u); }} onDelete={(id)=>{ const u = expenses.filter(x=>x.id!==id); setExpenses(u); ApiService.pushUpdate('expenses', u); }} />}
           {currentView === 'returns' && <Returns returns={returns} sales={sales} onAdd={handleAddReturn} onUpdateStatus={handleUpdateReturnStatus} onAddExpense={handleAddExpense} preSelectedOrderId={preSelectedOrderId} />}
-          {/* Reports component does not accept periodSummaries or onUpdateSummaries props in ReportsProps */}
           {currentView === 'reports' && <Reports sales={sales} products={products} customers={customers} expenses={expenses} returns={returns} theme={theme} />}
           {currentView === 'calculator' && <PriceCalculator products={products} onUpdateProduct={(p)=>{ const u = products.map(x=>x.id===p.id?p:x); setProducts(u); ApiService.pushUpdate('products', u); }} />}
           {currentView === 'advisor' && <Advisor products={products} sales={sales} />}

@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { ViewState } from '../types';
 import { X, Info, BookOpen } from 'lucide-react';
@@ -17,9 +16,9 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ view, onClose }) =
             <h3 className="font-bold text-lg mb-2 text-indigo-300">Executive Dashboard</h3>
             <p className="mb-3 text-sm">Your real-time business command center.</p>
             <ul className="list-disc pl-4 space-y-2 text-xs opacity-90">
-              <li><strong>Net Operating Profit:</strong> The ultimate truth. Calculated as <em className="text-indigo-200">Gross Sales - COGS - Expenses - Return Losses</em>.</li>
-              <li><strong>Status Volume:</strong> Monitor the pulse of your orders. High 'Pending' means fulfillment is lagging.</li>
-              <li><strong>Reconciliation Flow:</strong> Visualizes cash flow. Opening Balance (from last month) + Profit = Closing Balance. Use "Close Period" in Reports to lock this.</li>
+              <li><strong>Net Profit:</strong> Derived as <em className="text-indigo-200">(Selling Price - Cost Price) - Operational Expenses</em>.</li>
+              <li><strong>Net Revenue:</strong> Cash flow indicator calculated as <em className="text-indigo-200">Total Sales Collected - Operational Expenses</em>.</li>
+              <li><strong>Warehouse Value:</strong> The total cost value of all inventory assets currently held in your shop.</li>
             </ul>
           </>
         );
@@ -42,8 +41,8 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ view, onClose }) =
             <p className="mb-3 text-sm">How you buy stock and calculate costs.</p>
             <ul className="list-disc pl-4 space-y-2 text-xs opacity-90">
               <li><strong>Smart Restock:</strong> Click the sparkle icon to auto-fill items that are below their "Min Stock" level.</li>
-              <li><strong>Create PO:</strong> Select a supplier and items. Status starts as 'Ordered'.</li>
-              <li><strong>Receiving Goods:</strong> Click "Receive" when goods arrive. This <strong>Increases Stock</strong> and updates the <strong>Weighted Average Cost (AVCO)</strong> of your items automatically.</li>
+              <li><strong>Receiving Goods:</strong> Click "Receive" when goods arrive. This <strong>Increases Stock</strong> and updates the <strong>Asset Value</strong> of your inventory.</li>
+              <li><strong>Note:</strong> Sourcing costs are treated as investments, not operational expenses.</li>
             </ul>
           </>
         );
@@ -58,7 +57,7 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ view, onClose }) =
                 <br/>• <em>Pending:</em> Stock is reserved (safe to sell), but not deducted.
                 <br/>• <em>Delivered:</em> Stock is permanently deducted. Revenue is recognized.
               </li>
-              <li><strong>Invoice:</strong> Print professional thermal-ready receipts immediately after order creation.</li>
+              <li><strong>Invoice:</strong> Print professional receipts immediately after order creation.</li>
             </ul>
           </>
         );
@@ -69,7 +68,6 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ view, onClose }) =
             <p className="mb-3 text-sm">Track client relationships and value.</p>
             <ul className="list-disc pl-4 space-y-2 text-xs opacity-90">
               <li><strong>LTV (Lifetime Value):</strong> Auto-calculated total of all 'Delivered' orders for a client.</li>
-              <li><strong>Tiers:</strong> Manually assign Gold/Silver/Bronze status based on LTV to offer exclusive perks.</li>
               <li><strong>History:</strong> Click the clock icon on any customer card to see their full purchase ledger.</li>
             </ul>
           </>
@@ -92,8 +90,7 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ view, onClose }) =
             <p className="mb-3 text-sm">Track operational outflow.</p>
             <ul className="list-disc pl-4 space-y-2 text-xs opacity-90">
               <li><strong>Operational Costs:</strong> Log rent, salaries, and utility bills here.</li>
-              <li><strong>Impact:</strong> These entries are deducted from your Gross Profit to calculate <strong>Net Operating Profit</strong> on the Dashboard.</li>
-              <li><strong>Auto-Entries:</strong> The system automatically logs "Procurement" expenses when you receive a PO.</li>
+              <li><strong>Impact:</strong> These entries are deducted from your Sales Profit to calculate <strong>Net Profit</strong> on the Dashboard.</li>
             </ul>
           </>
         );
@@ -103,12 +100,11 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ view, onClose }) =
             <h3 className="font-bold text-lg mb-2 text-indigo-300">RMA & Refunds</h3>
             <p className="mb-3 text-sm">Handling product returns and losses.</p>
             <ul className="list-disc pl-4 space-y-2 text-xs opacity-90">
-              <li><strong>Process:</strong> Select a 'Delivered' order. Choose the item.</li>
               <li><strong>Condition:</strong>
                 <br/>• <em>Resellable:</em> Stock is added back to inventory.
-                <br/>• <em>Damaged:</em> Stock is discarded (Loss recorded).
+                <br/>• <em>Damaged:</em> Stock is discarded (Investment lost).
               </li>
-              <li><strong>Delivery Refusal:</strong> If a customer refuses delivery, check the box to log the delivery fee as a business loss automatically.</li>
+              <li><strong>Delivery Refusal:</strong> If a customer refuses delivery, check the box to log the courier fee as an operational loss automatically.</li>
             </ul>
           </>
         );
@@ -118,8 +114,7 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ view, onClose }) =
             <h3 className="font-bold text-lg mb-2 text-indigo-300">Import Costing Lab</h3>
             <p className="mb-3 text-sm">Determine true Landed Cost for imports.</p>
             <ul className="list-disc pl-4 space-y-2 text-xs opacity-90">
-              <li><strong>Scenario:</strong> You bought items from China + paid a global shipping bill.</li>
-              <li><strong>Action:</strong> Add items to the batch. Enter the <strong>Grand Total</strong> shipping/customs fee.</li>
+              <li><strong>Scenario:</strong> You bought items from overseas + paid a global shipping bill.</li>
               <li><strong>Result:</strong> The system spreads the fee across items based on value. Click "Update Inventory" to apply these new costs to your stock.</li>
             </ul>
           </>
@@ -139,10 +134,9 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ view, onClose }) =
         return (
           <>
             <h3 className="font-bold text-lg mb-2 text-indigo-300">Financial Reports</h3>
-            <p className="mb-3 text-sm">Closing books and analyzing trends.</p>
+            <p className="mb-3 text-sm">Auditing and document generation.</p>
             <ul className="list-disc pl-4 space-y-2 text-xs opacity-90">
-              <li><strong>Close Period:</strong> At month-end, use this to lock your profit and carry the cash balance forward to the next month's "Opening Balance".</li>
-              <li><strong>Statements:</strong> Generate P&L statements or General Ledgers for tax and accounting purposes.</li>
+              <li><strong>Master Grid:</strong> Generate a professional printable statement of the month's finalized ledger and inventory position.</li>
             </ul>
           </>
         );
@@ -153,8 +147,7 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ view, onClose }) =
             <p className="mb-3 text-sm">Configuration and Data Safety.</p>
             <ul className="list-disc pl-4 space-y-2 text-xs opacity-90">
               <li><strong>Business Profile:</strong> Update the info that appears on your printed invoices.</li>
-              <li><strong>Backups:</strong> regularly download a JSON backup of your data. You can restore it here if you switch devices.</li>
-              <li><strong>Factory Reset:</strong> Wipes everything to start fresh. Use with caution!</li>
+              <li><strong>Backups:</strong> Regularly download a JSON backup of your data. You can restore it here if you switch devices.</li>
             </ul>
           </>
         );
@@ -186,8 +179,6 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ view, onClose }) =
         >
           <X size={16} />
         </button>
-        
-        {/* Little triangle pointer pointing to the FAB */}
         <div className="absolute -bottom-2 right-8 w-4 h-4 bg-slate-900 transform rotate-45 border-r border-b border-indigo-500/30"></div>
       </div>
     </div>
