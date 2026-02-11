@@ -6,7 +6,7 @@ import {
   Hash, User, Filter, CheckCircle2, Clock, Ban, ChevronLeft, 
   ChevronRight, Truck, Calendar, Printer, MapPin, ChevronDown, 
   Award, RotateCcw, Edit, CreditCard, DollarSign, Phone, Check, 
-  Download, Search, AlertTriangle
+  Download, Search, AlertTriangle, Save
 } from 'lucide-react';
 
 interface SalesProps {
@@ -30,7 +30,6 @@ const CATEGORIES = [
 
 const EDITABLE_STATUSES = ['Pending', 'Confirmed', 'Delivered', 'Cancelled', 'Returned', 'Partially Returned'];
 const FILTER_STATUSES = ['All', 'Pending', 'Confirmed', 'Delivered', 'Returned', 'Partially Returned', 'Cancelled'];
-const PAYMENT_METHODS = ['Cash', 'Card', 'Mobile Money', 'Bank Transfer', 'Other'];
 
 const getLocalDate = () => {
   const d = new Date();
@@ -61,7 +60,7 @@ const PosProductCard: React.FC<PosProductCardProps> = ({ product, onAdd, cartIte
     : product.sellingPrice;
 
   return (
-    <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 transition-all flex flex-col h-full shadow-sm">
+    <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 transition-all flex flex-col h-full shadow-sm group hover:border-indigo-500/50">
       <div className="flex justify-between items-start mb-3">
          <div className="w-12 h-12 rounded-xl bg-slate-100 dark:bg-slate-800 overflow-hidden flex items-center justify-center border border-slate-200 dark:border-slate-700">
            {product.image ? (
@@ -88,7 +87,7 @@ const PosProductCard: React.FC<PosProductCardProps> = ({ product, onAdd, cartIte
            <button 
              onClick={() => onAdd(product)}
              disabled={product.stockLevel <= 0}
-             className="w-full py-3 bg-slate-900 dark:bg-indigo-600 text-white rounded-xl font-bold text-xs active:scale-95 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
+             className="w-full py-3 bg-slate-900 dark:bg-indigo-600 text-white rounded-xl font-bold text-xs active:scale-95 disabled:opacity-50 transition-all flex items-center justify-center gap-2 hover:bg-slate-800 dark:hover:bg-indigo-500"
            >
              {getItemCount() > 0 ? (
                <><div className="w-4 h-4 rounded-full bg-white text-black flex items-center justify-center text-[9px]">{getItemCount()}</div> Add More</>
@@ -128,7 +127,6 @@ export const Sales: React.FC<SalesProps> = ({
   companyProfile, notify, returns
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
   
@@ -136,7 +134,6 @@ export const Sales: React.FC<SalesProps> = ({
   const [selectedStatusFilter, setSelectedStatusFilter] = useState('All');
   const [selectedDateFilter, setSelectedDateFilter] = useState('');
   const [productSearch, setProductSearch] = useState('');
-  const [customerSearch, setCustomerSearch] = useState('');
   const [ledgerSearch, setLedgerSearch] = useState('');
   const [mobileTab, setMobileTab] = useState<'catalog' | 'cart'>('catalog');
   
@@ -159,7 +156,7 @@ export const Sales: React.FC<SalesProps> = ({
         s.customerName.toLowerCase().includes(ledgerSearch.toLowerCase()) || 
         s.id.toLowerCase().includes(ledgerSearch.toLowerCase()) : true;
       return matchStatus && matchDate && matchSearch;
-    });
+    }).sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [sales, selectedStatusFilter, selectedDateFilter, ledgerSearch]);
 
   const paginatedSales = useMemo(() => {
@@ -188,11 +185,9 @@ export const Sales: React.FC<SalesProps> = ({
     const itemInCart = items.find(i => i.productId === product.id && (variant ? i.variantId === variant.id : !i.variantId));
     const currentQtyInCart = itemInCart?.quantity || 0;
     
-    // Only check stock limit if creating a NEW sale or if the item is new/increased in edit mode
-    // Simplifying logic: Warn if stock exceeded but allow for edit flexibility (e.g. negative stock allowed in some systems, but here we strict)
+    // Warn if stock exceeded but don't block adding (allows overrides/pre-orders)
     if (qty > 0 && currentQtyInCart + qty > currentStock && !editingSaleId) {
-      if (notify) notify(`Shop stock limit: ${currentStock}`, 'error');
-      return;
+      if (notify) notify(`Warning: Shop stock limit (${currentStock}) exceeded.`, 'info');
     }
 
     if (existingIndex > -1) {
@@ -211,32 +206,9 @@ export const Sales: React.FC<SalesProps> = ({
     setNewSale({ ...newSale, items });
   };
 
-  const validateStockForDelivery = (items: SaleItem[]) => {
-    for (const item of items) {
-        const product = products.find(p => p.id === item.productId);
-        if (!product) continue;
-        const available = product.hasVariants && item.variantId 
-            ? (product.variants?.find(v => v.id === item.variantId)?.stockLevel || 0)
-            : product.stockLevel;
-        
-        // If editing, we might be the ones holding the stock, so simple check might fail. 
-        // For simplicity, we just check if requested > current. 
-        // Ideally we add back current order items to 'available' before check.
-        if (available < item.quantity && !editingSaleId) return { valid: false, message: `Stock low for ${item.productName}.` };
-    }
-    return { valid: true };
-  };
-
   const handleSubmit = () => {
     if (!newSale.customerId || !newSale.items?.length) return;
     
-    // Only validate stock on initial Delivery status to prevent overselling. 
-    // During Edit, user might be correcting a mistake, so strict check might block.
-    if (newSale.status === 'Delivered' && !editingSaleId) {
-        const check = validateStockForDelivery(newSale.items as SaleItem[]);
-        if (!check.valid) { notify?.(check.message!, 'error'); return; }
-    }
-
     const saleItems = newSale.items as SaleItem[];
     const subtotal = saleItems.reduce((sum, item) => sum + item.total, 0);
     const total = Math.max(0, subtotal - (newSale.discountAmount || 0) + (newSale.deliveryCharge || 0));
@@ -258,8 +230,12 @@ export const Sales: React.FC<SalesProps> = ({
       paymentMethod: newSale.paymentMethod || 'Cash'
     };
 
-    if (editingSaleId) onUpdateSale(finalSaleData);
-    else onAddSale(finalSaleData);
+    if (editingSaleId) {
+        onUpdateSale(finalSaleData);
+        if(notify) notify('Order updated successfully', 'success');
+    } else {
+        onAddSale(finalSaleData);
+    }
     
     setIsModalOpen(false);
     resetForm();
@@ -282,7 +258,6 @@ export const Sales: React.FC<SalesProps> = ({
 
   const resetForm = () => {
     setNewSale({ date: getLocalDate(), customerId: '', items: [], discountAmount: 0, deliveryCharge: 0, notes: '', status: 'Pending', paymentMethod: 'Cash' });
-    setCustomerSearch('');
     setEditingSaleId(null);
     setMobileTab('catalog');
   };
@@ -295,11 +270,11 @@ export const Sales: React.FC<SalesProps> = ({
 
   const getStatusStyle = (status: string) => {
     switch(status) {
-      case 'Confirmed': return 'bg-blue-100 text-blue-700 border-blue-200';
-      case 'Delivered': return 'bg-green-100 text-green-700 border-green-200';
-      case 'Pending': return 'bg-amber-100 text-amber-700 border-amber-200';
-      case 'Cancelled': return 'bg-red-100 text-red-700 border-red-200';
-      default: return 'bg-slate-100 text-slate-700 border-slate-200';
+      case 'Confirmed': return 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800';
+      case 'Delivered': return 'bg-green-100 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800';
+      case 'Pending': return 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800';
+      case 'Cancelled': return 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800';
+      default: return 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700';
     }
   };
 
@@ -310,7 +285,7 @@ export const Sales: React.FC<SalesProps> = ({
           <h2 className="text-3xl font-serif font-bold text-slate-900 dark:text-white">Orders</h2>
           <p className="text-slate-500 text-sm">Sale registry and POS terminal.</p>
         </div>
-        <button onClick={() => { resetForm(); setIsModalOpen(true); }} className="w-full md:w-auto h-12 px-8 bg-indigo-600 text-white rounded-xl flex items-center justify-center gap-2 shadow-xl font-bold active:scale-95">
+        <button onClick={() => { resetForm(); setIsModalOpen(true); }} className="w-full md:w-auto h-12 px-8 bg-indigo-600 text-white rounded-xl flex items-center justify-center gap-2 shadow-xl font-bold active:scale-95 transition-all hover:bg-indigo-700">
           <Plus size={18} /> New POS Sale
         </button>
       </div>
@@ -332,21 +307,32 @@ export const Sales: React.FC<SalesProps> = ({
               <th className="px-6 py-4">Reference</th>
               <th className="px-6 py-4">Client</th>
               <th className="px-6 py-4 text-right">Total</th>
-              <th className="px-6 py-4 text-center">Status</th>
+              <th className="px-6 py-4 text-center">Status (Quick Edit)</th>
               <th className="px-6 py-4 text-right">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
             {paginatedSales.map((sale) => (
-              <tr key={sale.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 cursor-pointer" onClick={() => handleEditSale(sale)}>
-                <td className="px-6 py-4"><p className="font-bold">#{sale.id.slice(-6)}</p><p className="text-[10px] text-slate-400 font-mono">{sale.date}</p></td>
+              <tr key={sale.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 cursor-pointer group" onClick={() => handleEditSale(sale)}>
+                <td className="px-6 py-4">
+                    <p className="font-bold">#{sale.id.slice(-6)}</p>
+                    <p className="text-[10px] text-slate-400 font-mono">{sale.date}</p>
+                </td>
                 <td className="px-6 py-4"><p className="font-bold">{sale.customerName}</p></td>
                 <td className="px-6 py-4 text-right font-bold font-mono">৳{sale.totalAmount.toLocaleString()}</td>
-                <td className="px-6 py-4 text-center"><span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border ${getStatusStyle(sale.status)}`}>{sale.status}</span></td>
+                <td className="px-6 py-4 text-center" onClick={(e) => e.stopPropagation()}>
+                    <select 
+                        value={sale.status}
+                        onChange={(e) => onUpdateSale({...sale, status: e.target.value as any})}
+                        className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest border outline-none cursor-pointer appearance-none text-center hover:opacity-80 transition-all ${getStatusStyle(sale.status)}`}
+                    >
+                        {EDITABLE_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                </td>
                 <td className="px-6 py-4 text-right">
-                  <div className="flex justify-end gap-2">
-                     <button onClick={(e) => { e.stopPropagation(); handleEditSale(sale); }} className="p-2 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400" title="Edit Order"><Edit size={16}/></button>
-                     <button onClick={(e) => { e.stopPropagation(); handlePrintInvoice(sale); }} className="p-2 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400" title="Print Invoice"><Printer size={16}/></button>
+                  <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                     <button onClick={(e) => { e.stopPropagation(); handleEditSale(sale); }} className="p-2 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 rounded-lg" title="Edit Order"><Edit size={16}/></button>
+                     <button onClick={(e) => { e.stopPropagation(); handlePrintInvoice(sale); }} className="p-2 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 rounded-lg" title="Print Invoice"><Printer size={16}/></button>
                   </div>
                 </td>
               </tr>
@@ -431,9 +417,9 @@ export const Sales: React.FC<SalesProps> = ({
                             <p className="text-[10px] text-indigo-500 font-bold uppercase">{item.variantName}</p>
                           </div>
                           <div className="flex items-center gap-2">
-                             <button onClick={() => addItemToSale(products.find(p=>p.id===item.productId)!, item.variantId ? products.find(p=>p.id===item.productId)!.variants?.find(v=>v.id===item.variantId) : undefined, -1)} className="w-8 h-8 bg-white dark:bg-slate-700 rounded-lg flex items-center justify-center border border-slate-200 dark:border-slate-600 shadow-sm"><Minus size={12}/></button>
+                             <button onClick={() => addItemToSale(products.find(p=>p.id===item.productId)!, item.variantId ? products.find(p=>p.id===item.productId)!.variants?.find(v=>v.id===item.variantId) : undefined, -1)} className="w-8 h-8 bg-white dark:bg-slate-700 rounded-lg flex items-center justify-center border border-slate-200 dark:border-slate-600 shadow-sm hover:bg-slate-100 dark:hover:bg-slate-600"><Minus size={12}/></button>
                              <span className="w-6 text-center font-bold text-xs">{item.quantity}</span>
-                             <button onClick={() => addItemToSale(products.find(p=>p.id===item.productId)!, item.variantId ? products.find(p=>p.id===item.productId)!.variants?.find(v=>v.id===item.variantId) : undefined, 1)} className="w-8 h-8 bg-white dark:bg-slate-700 rounded-lg flex items-center justify-center border border-slate-200 dark:border-slate-600 shadow-sm"><Plus size={12}/></button>
+                             <button onClick={() => addItemToSale(products.find(p=>p.id===item.productId)!, item.variantId ? products.find(p=>p.id===item.productId)!.variants?.find(v=>v.id===item.variantId) : undefined, 1)} className="w-8 h-8 bg-white dark:bg-slate-700 rounded-lg flex items-center justify-center border border-slate-200 dark:border-slate-600 shadow-sm hover:bg-slate-100 dark:hover:bg-slate-600"><Plus size={12}/></button>
                           </div>
                         </div>
                       ))}
@@ -449,7 +435,8 @@ export const Sales: React.FC<SalesProps> = ({
                             <span className="text-2xl font-serif">৳{currentTotal.toLocaleString()}</span>
                         </div>
                     </div>
-                    <button onClick={handleSubmit} disabled={!newSale.customerId || !newSale.items?.length} className="w-full h-16 bg-indigo-600 text-white rounded-2xl font-black uppercase tracking-[0.2em] text-xs shadow-xl active:scale-95 transition-all disabled:opacity-30">
+                    <button onClick={handleSubmit} disabled={!newSale.customerId || !newSale.items?.length} className="w-full h-16 bg-indigo-600 text-white rounded-2xl font-black uppercase tracking-[0.2em] text-xs shadow-xl active:scale-95 transition-all disabled:opacity-30 hover:bg-indigo-700 flex items-center justify-center gap-3">
+                        <Save size={18} />
                         {editingSaleId ? 'Update Order' : 'Confirm Sale'}
                     </button>
                 </div>

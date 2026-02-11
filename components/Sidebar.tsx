@@ -63,7 +63,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange, the
     { id: 'calculator', label: 'Pricing Tool', icon: <Calculator size={20} /> },
     { id: 'advisor', label: 'AI Advisor', icon: <BrainCircuit size={20} /> },
     { id: 'tester', label: 'System Health', icon: <ActivitySquare size={20} /> },
-    { id: 'audit', label: 'System Diagnostic', icon: <Shield size={20} /> },
+    { id: 'audit', label: 'Audit Logs (Diagnostic)', icon: <Shield size={20} /> },
     { id: 'settings', label: 'Settings', icon: <SettingsIcon size={20} /> },
   ];
 
