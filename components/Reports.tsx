@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Sale, Product, Customer, Expense, Return } from '../types';
-import { Printer, TrendingUp, ShoppingBag, Package, Receipt, FileText, Calendar, ClipboardList } from 'lucide-react';
+import { Printer, TrendingUp, ShoppingBag, Package, Receipt, FileText, Download, Users, FolderDown } from 'lucide-react';
 
 interface ReportsProps {
   sales: Sale[];
@@ -13,7 +13,7 @@ interface ReportsProps {
 
 export const Reports: React.FC<ReportsProps> = ({ sales, products, customers, expenses, returns, theme }) => {
   const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().substring(0, 7));
-  const [activeTab, setActiveTab] = useState<'overview' | 'master'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'master' | 'exports'>('overview');
 
   const stats = useMemo(() => {
     const monthlySales = sales.filter(s => s.date.startsWith(selectedMonth));
@@ -22,7 +22,6 @@ export const Reports: React.FC<ReportsProps> = ({ sales, products, customers, ex
     const monthlyReturns = returns.filter(r => r.date.startsWith(selectedMonth) && r.status === 'Approved');
     const totalRefunds = monthlyReturns.reduce((acc, r) => acc + r.refundAmount, 0);
 
-    // FORMULA 2: Sales Profit = total Selling price - total Cost Price
     const realizedSellingPrice = realizedSales.reduce((acc, s) => acc + s.totalAmount, 0) - totalRefunds;
     const realizedSalesProfit = realizedSales.reduce((acc, s) => acc + s.profit, 0) - totalRefunds;
     
@@ -43,15 +42,78 @@ export const Reports: React.FC<ReportsProps> = ({ sales, products, customers, ex
         inventoryVal += (stock || 0) * p.costPrice;
     });
 
-    const itemCounts: Record<string, number> = {};
-    realizedSales.forEach(s => {
-      s.items.forEach(i => {
-        itemCounts[i.productName] = (itemCounts[i.productName] || 0) + i.quantity;
-      });
-    });
-
-    return { netRevenue, netProfit, runningExpenses, inventoryVal, realizedSales, realizedSellingPrice, realizedSalesProfit, itemCounts };
+    return { netRevenue, netProfit, runningExpenses, inventoryVal, realizedSales, realizedSellingPrice, realizedSalesProfit };
   }, [sales, expenses, returns, products, selectedMonth]);
+
+  const downloadCSV = (type: 'orders' | 'inventory' | 'customers' | 'expenses') => {
+    let headers: string[] = [];
+    let rows: any[][] = [];
+    let filename = "";
+
+    const formatCurrency = (val: number) => val.toFixed(2);
+
+    if (type === 'orders') {
+      const monthSales = sales.filter(s => s.date.startsWith(selectedMonth));
+      headers = ["Order ID", "Date", "Customer", "Total Revenue (BDT)", "Delivery Charge (BDT)", "Total Cost (BDT)", "Gross Profit (BDT)", "Status", "Item Count", "Notes"];
+      rows = monthSales.map(s => [
+        s.id, 
+        s.date, 
+        s.customerName, 
+        formatCurrency(s.totalAmount), 
+        formatCurrency(s.deliveryCharge || 0),
+        formatCurrency(s.totalCost), 
+        formatCurrency(s.profit), 
+        s.status,
+        s.items.reduce((acc, i) => acc + i.quantity, 0),
+        s.notes
+      ]);
+      filename = `Sales_${selectedMonth}.csv`;
+    } else if (type === 'inventory') {
+      headers = ["SKU", "Product Name", "Category", "Stock Level", "Cost Price (BDT)", "Selling Price (BDT)", "Asset Value", "Potential Revenue"];
+      rows = products.map(p => {
+        const stock = p.hasVariants ? p.variants?.reduce((sum, v) => sum + v.stockLevel, 0) : p.stockLevel;
+        return [
+          p.sku, 
+          p.name, 
+          p.category, 
+          stock, 
+          formatCurrency(p.costPrice), 
+          formatCurrency(p.sellingPrice), 
+          formatCurrency((stock || 0) * p.costPrice), 
+          formatCurrency((stock || 0) * p.sellingPrice)
+        ];
+      });
+      filename = `Inventory_${new Date().toISOString().split('T')[0]}.csv`;
+    } else if (type === 'customers') {
+      headers = ["ID", "Name", "Phone", "Address", "Tier", "Total Spent", "Last Purchase"];
+      rows = customers.map(c => [c.id, c.name, c.phone, c.address, c.tier, formatCurrency(c.totalSpent), c.lastPurchaseDate]);
+      filename = `Customers_${new Date().toISOString().split('T')[0]}.csv`;
+    } else if (type === 'expenses') {
+      const monthExpenses = expenses.filter(e => e.date.startsWith(selectedMonth));
+      headers = ["ID", "Date", "Category", "Description", "Amount (BDT)", "Payment Method", "Status"];
+      rows = monthExpenses.map(e => [e.id, e.date, e.category, e.description, formatCurrency(e.amount), e.paymentMethod, e.status]);
+      filename = `Expenses_${selectedMonth}.csv`;
+    }
+
+    const formatField = (field: any) => {
+      const str = String(field);
+      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    };
+
+    const csvContent = "\uFEFF" + [headers, ...rows].map(e => e.map(formatField).join(",")).join("\n");
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
 
   const handlePrintMasterReport = () => {
     const printWindow = window.open('', '_blank');
@@ -84,7 +146,7 @@ export const Reports: React.FC<ReportsProps> = ({ sales, products, customers, ex
         <body>
           <div class="header">
             <div><h1>MASTER BUSINESS REPORT</h1><p style="font-size:12px; font-weight:600; color:#64748b; margin-top:5px;">Period: ${dateTitle}</p></div>
-            <div style="text-align:right"><p>Enterprise Management System</p><p>${new Date().toLocaleString()}</p></div>
+            <div style="text-align:right"><p>TheDécorHub Management System</p><p>${new Date().toLocaleString()}</p></div>
           </div>
 
           <div class="kpis">
@@ -109,8 +171,8 @@ export const Reports: React.FC<ReportsProps> = ({ sales, products, customers, ex
                 }).join('')}
                 <tr class="total-row">
                     <td colspan="3">PERIOD TOTALS</td>
-                    <td class="text-right">৳${(stats.realizedSellingPrice + (returns.filter(r => r.date.startsWith(selectedMonth) && r.status === 'Approved').reduce((a,b)=>a+b.refundAmount,0))).toLocaleString()}</td>
-                    <td class="text-right">৳${(returns.filter(r => r.date.startsWith(selectedMonth) && r.status === 'Approved').reduce((a,b)=>a+b.refundAmount,0)).toLocaleString()}</td>
+                    <td class="text-right">৳${(stats.realizedSellingPrice + returns.filter(r => r.date.startsWith(selectedMonth)).reduce((a,b)=>a+b.refundAmount,0)).toLocaleString()}</td>
+                    <td class="text-right">৳${returns.filter(r => r.date.startsWith(selectedMonth)).reduce((a,b)=>a+b.refundAmount,0).toLocaleString()}</td>
                     <td class="text-right" style="color:#10b981">৳${stats.realizedSalesProfit.toLocaleString()}</td>
                 </tr>
               </tbody>
@@ -146,7 +208,7 @@ export const Reports: React.FC<ReportsProps> = ({ sales, products, customers, ex
           </div>
 
           <div class="footer">
-             <p>Certified Performance Statement • Logic: Net Profit = (Sales Profit - OpEx); Net Revenue = (Gross Revenue - OpEx). Procurement costs are treated as Balance Sheet Assets, not Expenses.</p>
+             <p>Certified Master Report • Equations: Net Profit = (Sales Profit - OpEx); Net Revenue = (Gross Revenue - OpEx); Procurement is Stock Asset investment, not OpEx.</p>
           </div>
           <script>window.onload = function() { window.print(); }</script>
         </body>
@@ -160,12 +222,13 @@ export const Reports: React.FC<ReportsProps> = ({ sales, products, customers, ex
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h2 className="text-3xl font-serif font-bold text-slate-900 dark:text-white">Business Intelligence</h2>
-          <p className="text-slate-500 text-sm">Strategic analytics and document generation.</p>
+          <p className="text-slate-500 text-sm">Strategic analytics and month-end documentation.</p>
         </div>
         <div className="flex items-center gap-3 w-full md:w-auto">
           <div className="bg-slate-100 dark:bg-slate-800 p-1 rounded-xl flex flex-1 md:flex-none">
-             <button onClick={() => setActiveTab('overview')} className={`flex-1 md:px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'overview' ? 'bg-white dark:bg-slate-700 shadow text-indigo-600 dark:text-white' : 'text-slate-400'}`}>Overview</button>
-             <button onClick={() => setActiveTab('master')} className={`flex-1 md:px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'master' ? 'bg-white dark:bg-slate-700 shadow text-indigo-600 dark:text-white' : 'text-slate-400'}`}>Master Grid</button>
+             <button onClick={() => setActiveTab('overview')} className={`flex-1 md:px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'overview' ? 'bg-white dark:bg-slate-700 shadow text-indigo-600 dark:text-white' : 'text-slate-500'}`}>Summary</button>
+             <button onClick={() => setActiveTab('exports')} className={`flex-1 md:px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'exports' ? 'bg-white dark:bg-slate-700 shadow text-indigo-600 dark:text-white' : 'text-slate-500'}`}>Data Export</button>
+             <button onClick={() => setActiveTab('master')} className={`flex-1 md:px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'master' ? 'bg-white dark:bg-slate-700 shadow text-indigo-600 dark:text-white' : 'text-slate-500'}`}>Master Grid</button>
           </div>
           <input type="month" className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-2 font-bold text-xs" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} />
         </div>
@@ -179,7 +242,7 @@ export const Reports: React.FC<ReportsProps> = ({ sales, products, customers, ex
                     <span className="text-[10px] font-black uppercase tracking-widest">Net Profit</span>
                 </div>
                 <p className="text-3xl font-bold">৳{stats.netProfit.toLocaleString()}</p>
-                <p className="text-[10px] opacity-60 mt-2">Sales Profit - Shop Costs</p>
+                <p className="text-[10px] opacity-60 mt-2">Final Sales Profit - Expenses</p>
             </div>
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-8 rounded-[2rem]">
                 <div className="flex items-center gap-2 text-emerald-600 mb-2">
@@ -187,68 +250,78 @@ export const Reports: React.FC<ReportsProps> = ({ sales, products, customers, ex
                     <span className="text-[10px] font-black uppercase tracking-widest">Net Revenue</span>
                 </div>
                 <p className="text-3xl font-bold dark:text-white">৳{stats.netRevenue.toLocaleString()}</p>
-                <p className="text-[10px] text-slate-400 mt-2">Revenue - Shop Costs</p>
+                <p className="text-[10px] text-slate-400 mt-2">Realized Price - Expenses</p>
             </div>
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-8 rounded-[2rem]">
                 <div className="flex items-center gap-2 text-indigo-600 mb-2">
                     <Package size={18} />
-                    <span className="text-[10px] font-black uppercase tracking-widest">Warehouse Value</span>
+                    <span className="text-[10px] font-black uppercase tracking-widest">Stock Assets</span>
                 </div>
                 <p className="text-3xl font-bold dark:text-white">৳{stats.inventoryVal.toLocaleString()}</p>
-                <p className="text-[10px] text-slate-400 mt-2">Assets in stock</p>
+                <p className="text-[10px] text-slate-400 mt-2">Unsold stock investment</p>
             </div>
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-8 rounded-[2rem]">
                 <div className="flex items-center gap-2 text-red-500 mb-2">
                     <Receipt size={18} />
-                    <span className="text-[10px] font-black uppercase tracking-widest">Op. Expenses</span>
+                    <span className="text-[10px] font-black uppercase tracking-widest">Shop Expenses</span>
                 </div>
                 <p className="text-3xl font-bold dark:text-white">৳{stats.runningExpenses.toLocaleString()}</p>
-                <p className="text-[10px] text-slate-400 mt-2">Monthly running outflow</p>
+                <p className="text-[10px] text-slate-400 mt-2">Monthly operational outflow</p>
             </div>
         </div>
       )}
 
-      {activeTab === 'overview' && stats.realizedSales.length > 0 && (
-          <div className="bg-white dark:bg-slate-900/40 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm backdrop-blur-sm mt-8">
-            <div className="p-8 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-800/50">
-              <h3 className="font-bold text-lg text-slate-800 dark:text-white flex items-center gap-2">
-                <ClipboardList size={20} className="text-indigo-600 dark:text-indigo-400" /> Realized Performance
-              </h3>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm whitespace-nowrap">
-                <thead className="bg-slate-50 dark:bg-slate-800 text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-widest">
-                  <tr>
-                    <th className="px-8 py-5">Product</th>
-                    <th className="px-8 py-5 text-center">Qty Sold</th>
-                    <th className="px-8 py-5 text-right">Revenue (৳)</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {Object.entries(stats.itemCounts).map(([name, qty]) => (
-                    <tr key={name} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
-                      <td className="px-8 py-5 font-bold text-slate-700 dark:text-slate-300">{name}</td>
-                      <td className="px-8 py-5 text-center font-mono font-bold text-indigo-600 dark:text-indigo-400">{qty}</td>
-                      <td className="px-8 py-5 text-right font-bold text-slate-900 dark:text-white">
-                        ৳{(sales.filter(s => s.date.startsWith(selectedMonth) && ['Delivered', 'Partially Returned'].includes(s.status))
-                          .reduce((sum, s) => sum + s.items.filter(i => i.productName === name)
-                          .reduce((iSum, i) => iSum + i.total, 0), 0)).toLocaleString()}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+      {activeTab === 'exports' && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 animate-in slide-in-from-bottom-2">
+            <button 
+              onClick={() => downloadCSV('orders')}
+              className="flex flex-col items-center justify-center gap-4 p-8 bg-indigo-600 hover:bg-indigo-700 text-white rounded-[2.5rem] shadow-xl shadow-indigo-500/20 transition-all active:scale-95 group"
+            >
+              <div className="p-4 bg-white/10 rounded-2xl group-hover:scale-110 transition-transform">
+                <ShoppingBag size={24} />
+              </div>
+              <span className="block font-bold">Sales Ledger CSV</span>
+            </button>
+
+            <button 
+              onClick={() => downloadCSV('expenses')}
+              className="flex flex-col items-center justify-center gap-4 p-8 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-indigo-500 rounded-[2.5rem] shadow-sm transition-all active:scale-95 group"
+            >
+              <div className="p-4 bg-slate-50 dark:bg-slate-800 text-red-500 rounded-2xl group-hover:scale-110 transition-transform">
+                <Receipt size={24} />
+              </div>
+              <span className="block font-bold text-slate-800 dark:text-white">Expense Ledger CSV</span>
+            </button>
+
+            <button 
+              onClick={() => downloadCSV('inventory')}
+              className="flex flex-col items-center justify-center gap-4 p-8 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-indigo-500 rounded-[2.5rem] shadow-sm transition-all active:scale-95 group"
+            >
+              <div className="p-4 bg-slate-50 dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 rounded-2xl group-hover:scale-110 transition-transform">
+                <Package size={24} />
+              </div>
+              <span className="block font-bold text-slate-800 dark:text-white">Inventory CSV</span>
+            </button>
+
+            <button 
+              onClick={() => downloadCSV('customers')}
+              className="flex flex-col items-center justify-center gap-4 p-8 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-indigo-500 rounded-[2.5rem] shadow-sm transition-all active:scale-95 group"
+            >
+              <div className="p-4 bg-slate-50 dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 rounded-2xl group-hover:scale-110 transition-transform">
+                <Users size={24} />
+              </div>
+              <span className="block font-bold text-slate-800 dark:text-white">Customers CSV</span>
+            </button>
+        </div>
       )}
 
       {activeTab === 'master' && (
-          <div className="bg-white dark:bg-slate-900 p-16 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 text-center flex flex-col items-center">
+          <div className="bg-white dark:bg-slate-900 p-16 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 text-center flex flex-col items-center animate-in zoom-in-95">
               <div className="w-16 h-16 bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl flex items-center justify-center text-indigo-600 mb-6">
                 <FileText size={32} />
               </div>
-              <h3 className="text-2xl font-bold mb-3 dark:text-white">Professional Master Grid</h3>
-              <p className="text-slate-500 text-sm max-w-sm mb-10">Export a comprehensive financial summary including realized sales profit, operational costs, and warehouse valuation.</p>
+              <h3 className="text-2xl font-bold mb-3 dark:text-white">Master Business Grid</h3>
+              <p className="text-slate-500 text-sm max-w-sm mb-10">Export a comprehensive financial summary including realized sales, operational costs, and inventory valuation.</p>
               <button onClick={handlePrintMasterReport} className="w-full md:w-auto px-12 py-5 bg-indigo-600 text-white rounded-2xl font-bold shadow-xl hover:bg-indigo-700 transition-all flex items-center justify-center gap-3 active:scale-95">
                   <Printer size={20} /> Generate Master Grid
               </button>

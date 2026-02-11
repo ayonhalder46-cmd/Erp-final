@@ -16,6 +16,8 @@ import { Advisor } from './components/Advisor';
 import { PurchaseOrders } from './components/PurchaseOrders';
 import { FinalLedger } from './components/FinalLedger';
 import { SpreadsheetView } from './components/SpreadsheetView';
+import { AuditTrail } from './components/AuditTrail';
+import { TutorialGuide } from './components/TutorialGuide';
 import { ViewState, Product, Sale, Customer, AuditLog, Supplier, Expense, Return, SyncStatus, PurchaseOrder, PeriodSummary } from './types';
 import { INITIAL_PRODUCTS, INITIAL_CUSTOMERS, INITIAL_SUPPLIERS, INITIAL_EXPENSES } from './constants';
 import { ApiService } from './components/apiService';
@@ -27,6 +29,7 @@ const roundMoney = (amount: number) => Math.round((amount + Number.EPSILON) * 10
 function App() {
   const [currentView, setCurrentView] = useState<ViewState>('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [showTutorial, setShowTutorial] = useState(false);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => 
     (localStorage.getItem('hub_theme') as 'light' | 'dark') || 'light'
   );
@@ -275,6 +278,7 @@ function App() {
   return (
     <div className="flex h-screen bg-slate-100 dark:bg-slate-950 flex-col overflow-hidden">
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+      {showTutorial && <TutorialGuide view={currentView} onClose={() => setShowTutorial(false)} />}
       
       {/* Mobile Top Bar */}
       <header className="fixed top-0 left-0 right-0 h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 z-30 flex items-center justify-between px-4 shadow-sm md:hidden">
@@ -290,20 +294,37 @@ function App() {
         <div className="fixed inset-0 z-50 md:hidden">
           <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm" onClick={() => setIsSidebarOpen(false)} />
           <div className="absolute top-0 left-0 bottom-0 w-[280px] bg-white dark:bg-slate-900 animate-in slide-in-from-left duration-300 shadow-2xl overflow-y-auto">
-             <Sidebar currentView={currentView} onViewChange={(view) => { setCurrentView(view); setIsSidebarOpen(false); }} theme={theme} onToggleTheme={toggleTheme} syncStatus={syncStatus} onLock={() => setIsLocked(true)} onClose={() => setIsSidebarOpen(false)} />
+             <Sidebar 
+               currentView={currentView} 
+               onViewChange={(view) => { setCurrentView(view); setIsSidebarOpen(false); }} 
+               theme={theme} 
+               onToggleTheme={toggleTheme} 
+               syncStatus={syncStatus} 
+               onLock={() => setIsLocked(true)} 
+               onClose={() => setIsSidebarOpen(false)}
+               onToggleTutorial={() => setShowTutorial(true)}
+             />
           </div>
         </div>
       )}
 
       {/* Desktop Sidebar (Persistent) */}
       <div className="hidden md:flex h-full fixed left-0 top-0 w-64 z-20">
-         <Sidebar currentView={currentView} onViewChange={setCurrentView} theme={theme} onToggleTheme={toggleTheme} syncStatus={syncStatus} onLock={() => setIsLocked(true)} />
+         <Sidebar 
+           currentView={currentView} 
+           onViewChange={setCurrentView} 
+           theme={theme} 
+           onToggleTheme={toggleTheme} 
+           syncStatus={syncStatus} 
+           onLock={() => setIsLocked(true)} 
+           onToggleTutorial={() => setShowTutorial(true)}
+         />
       </div>
 
       <main className="flex-1 overflow-y-auto pt-16 md:pt-0 md:pl-64 custom-scrollbar">
         <div className="p-4 md:p-8 pb-32 max-w-full mx-auto">
           {currentView === 'dashboard' && <Dashboard products={products} sales={sales} customers={customers} expenses={expenses} returns={returns} onNavigate={setCurrentView} theme={theme} businessProfile={businessProfile} />}
-          {currentView === 'inventory' && <Inventory products={products} suppliers={suppliers} onAddProduct={(p)=> { setProducts([...products, p]); ApiService.pushUpdate('products', [...products, p]); }} onUpdateProduct={(p)=>{ const u = products.map(x=>x.id===p.id?p:x); setProducts(u); ApiService.pushUpdate('products', u); }} onDeleteProduct={(id)=> { const u = products.filter(x=>x.id!==id); setProducts(u); ApiService.pushUpdate('products', u); }} canUndo={false} canRedo={false} onUndo={()=>{}} onRedo={()=>{}} notify={showToast} />}
+          {currentView === 'inventory' && <Inventory products={products} suppliers={suppliers} onAddProduct={(p)=> { setProducts([...products, p]); ApiService.pushUpdate('products', [...products, p]); }} onUpdateProduct={(p)=>{ const u = products.map(x=>x.id===p.id?p:x); setProducts(u); ApiService.pushUpdate('products', u); }} onDeleteProduct={(id)=> { const u = products.filter(x=>x.id!==id); setProducts(u); ApiService.pushUpdate('products', u); }} notify={showToast} />}
           {currentView === 'procurement' && <PurchaseOrders purchaseOrders={purchaseOrders} products={products} suppliers={suppliers} onCreatePO={(po)=>{ const u = [po, ...purchaseOrders]; setPurchaseOrders(u); ApiService.pushUpdate('purchaseOrders', u); }} onReceivePO={(po)=>{
              setProducts(prev => {
                 const updated = [...prev];
@@ -326,16 +347,56 @@ function App() {
              });
              showToast('Stock received into inventory', 'success');
           }} companyProfile={businessProfile} />}
-          {currentView === 'sales' && <Sales sales={sales} products={products} customers={customers} onAddSale={handleAddSale} onUpdateSale={handleUpdateSale} onDeleteSale={(id)=>{ setSales(sales.filter(x=>x.id!==id)); ApiService.pushUpdate('sales', sales.filter(x=>x.id!==id)); }} onAddCustomer={(c)=>{ setCustomers([...customers, c]); ApiService.pushUpdate('customers', [...customers, c]); }} onUndo={()=>{}} onRedo={()=>{}} onCommit={()=>{}} canUndo={false} canRedo={false} isDirty={false} companyProfile={businessProfile} notify={showToast} onRequestReturn={setPreSelectedOrderId as any} returns={returns} />}
+          {currentView === 'sales' && <Sales sales={sales} products={products} customers={customers} onAddSale={handleAddSale} onUpdateSale={handleUpdateSale} onDeleteSale={(id)=>{ setSales(sales.filter(x=>x.id!==id)); ApiService.pushUpdate('sales', sales.filter(x=>x.id!==id)); }} onAddCustomer={(c)=>{ setCustomers([...customers, c]); ApiService.pushUpdate('customers', [...customers, c]); }} companyProfile={businessProfile} notify={showToast} onRequestReturn={setPreSelectedOrderId as any} returns={returns} />}
           {currentView === 'final_ledger' && <FinalLedger sales={sales} returns={returns} expenses={expenses} />}
           {currentView === 'spreadsheet' && <SpreadsheetView products={products} sales={sales} customers={customers} suppliers={suppliers} expenses={expenses} returns={returns} onUpdateProduct={(p)=>{ const u = products.map(x=>x.id===p.id?p:x); setProducts(u); ApiService.pushUpdate('products', u); }} />}
-          {currentView === 'customers' && <Customers customers={customers} sales={sales} onAdd={(c)=>{ setCustomers([...customers, c]); ApiService.pushUpdate('customers', [...customers, c]); }} onUpdate={(c)=>{ const u = customers.map(x=>x.id===c.id?c:x); setCustomers(u); ApiService.pushUpdate('customers', u); }} onDelete={(id)=>{ setCustomers(customers.filter(x=>x.id!==id)); ApiService.pushUpdate('customers', customers.filter(x=>x.id!==id)); }} canUndo={false} canRedo={false} onUndo={()=>{}} onRedo={()=>{}} />}
-          {currentView === 'suppliers' && <Suppliers suppliers={suppliers} products={products} onAdd={(s)=>{ setSuppliers([...suppliers, s]); ApiService.pushUpdate('suppliers', [...suppliers, s]); }} onUpdate={(s)=>{ const u = suppliers.map(x=>x.id===s.id?s:x); setSuppliers(u); ApiService.pushUpdate('suppliers', u); }} onDelete={(id)=>{ setSuppliers(suppliers.filter(x=>x.id!==id)); ApiService.pushUpdate('suppliers', suppliers.filter(x=>x.id!==id)); }} canUndo={false} canRedo={false} onUndo={()=>{}} onRedo={()=>{}} />}
+          {currentView === 'customers' && <Customers customers={customers} sales={sales} onAdd={(c)=>{ setCustomers([...customers, c]); ApiService.pushUpdate('customers', [...customers, c]); }} onUpdate={(c)=>{ const u = customers.map(x=>x.id===c.id?c:x); setCustomers(u); ApiService.pushUpdate('customers', u); }} onDelete={(id)=>{ setCustomers(customers.filter(x=>x.id!==id)); ApiService.pushUpdate('customers', customers.filter(x=>x.id!==id)); }} />}
+          {currentView === 'suppliers' && <Suppliers suppliers={suppliers} products={products} onAdd={(s)=>{ setSuppliers([...suppliers, s]); ApiService.pushUpdate('suppliers', [...suppliers, s]); }} onUpdate={(s)=>{ const u = suppliers.map(x=>x.id===s.id?s:x); setSuppliers(u); ApiService.pushUpdate('suppliers', u); }} onDelete={(id)=>{ setSuppliers(suppliers.filter(x=>x.id!==id)); ApiService.pushUpdate('suppliers', suppliers.filter(x=>x.id!==id)); }} />}
           {currentView === 'expenses' && <Expenses expenses={expenses} onAdd={handleAddExpense} onUpdate={(e)=>{ const u = expenses.map(x=>x.id===e.id?e:x); setExpenses(u); ApiService.pushUpdate('expenses', u); }} onDelete={(id)=>{ const u = expenses.filter(x=>x.id!==id); setExpenses(u); ApiService.pushUpdate('expenses', u); }} />}
           {currentView === 'returns' && <Returns returns={returns} sales={sales} onAdd={handleAddReturn} onUpdateStatus={handleUpdateReturnStatus} onAddExpense={handleAddExpense} preSelectedOrderId={preSelectedOrderId} />}
           {currentView === 'reports' && <Reports sales={sales} products={products} customers={customers} expenses={expenses} returns={returns} theme={theme} />}
           {currentView === 'calculator' && <PriceCalculator products={products} onUpdateProduct={(p)=>{ const u = products.map(x=>x.id===p.id?p:x); setProducts(u); ApiService.pushUpdate('products', u); }} />}
           {currentView === 'advisor' && <Advisor products={products} sales={sales} />}
+          {currentView === 'tester' && <WorkflowTester 
+            onAddProduct={(p)=> { setProducts(prev => { const u = [p, ...prev]; ApiService.pushUpdate('products', u); return u; }); }} 
+            onAddSale={handleAddSale} 
+            onUpdateSale={handleUpdateSale} 
+            onAddReturn={handleAddReturn} 
+            onUpdateReturnStatus={handleUpdateReturnStatus}
+            onAddCustomer={(c)=> { setCustomers(prev => { const u = [c, ...prev]; ApiService.pushUpdate('customers', u); return u; }); }}
+            onAddSupplier={(s)=> { setSuppliers(prev => { const u = [s, ...prev]; ApiService.pushUpdate('suppliers', u); return u; }); }}
+            onAddExpense={handleAddExpense}
+            onCreatePO={(po)=> { setPurchaseOrders(prev => { const u = [po, ...prev]; ApiService.pushUpdate('purchaseOrders', u); return u; }); }}
+            onReceivePO={(po)=> { 
+               setProducts(prev => {
+                  const updated = [...prev];
+                  po.items.forEach(item => {
+                      const idx = updated.findIndex(x => x.id === item.productId);
+                      if(idx > -1) {
+                          const p = {...updated[idx]};
+                          p.stockLevel += item.quantity;
+                          p.costPrice = roundMoney(((updated[idx].stockLevel * updated[idx].costPrice) + (item.quantity * item.unitCost)) / (updated[idx].stockLevel + item.quantity));
+                          updated[idx] = p;
+                      }
+                  });
+                  ApiService.pushUpdate('products', updated);
+                  return updated;
+               });
+               setPurchaseOrders(prev => {
+                  const u = prev.map(x => x.id === po.id ? ({...x, status: 'Received'} as PurchaseOrder) : x);
+                  ApiService.pushUpdate('purchaseOrders', u);
+                  return u;
+               });
+            }}
+            onDeleteProduct={(id)=> { setProducts(prev => { const u = prev.filter(x=>x.id!==id); ApiService.pushUpdate('products', u); return u; }); }}
+            onDeleteSale={(id)=> { setSales(prev => { const u = prev.filter(x=>x.id!==id); ApiService.pushUpdate('sales', u); return u; }); }}
+            onDeleteCustomer={(id)=> { setCustomers(prev => { const u = prev.filter(x=>x.id!==id); ApiService.pushUpdate('customers', u); return u; }); }}
+            onDeleteSupplier={(id)=> { setSuppliers(prev => { const u = prev.filter(x=>x.id!==id); ApiService.pushUpdate('suppliers', u); return u; }); }}
+            onDeleteExpense={(id)=> { setExpenses(prev => { const u = prev.filter(x=>x.id!==id); ApiService.pushUpdate('expenses', u); return u; }); }}
+            onDeleteReturn={(id)=> { setReturns(prev => { const u = prev.filter(x=>x.id!==id); ApiService.pushUpdate('returns', u); return u; }); }}
+            onDeletePO={(id)=> { setPurchaseOrders(prev => { const u = prev.filter(x=>x.id!==id); ApiService.pushUpdate('purchaseOrders', u); return u; }); }}
+          />}
+          {currentView === 'audit' && <AuditTrail logs={logs} />}
           {currentView === 'settings' && <Settings products={products} sales={sales} customers={customers} suppliers={suppliers} expenses={expenses} returns={returns} onFactoryReset={()=>{ ApiService.clearAll(); localStorage.clear(); window.location.reload(); }} onPurgeSales={()=>{ setSales([]); ApiService.pushUpdate('sales', []); }} onPurgeInventory={()=>{ setProducts([]); ApiService.pushUpdate('products', []); }} businessProfile={businessProfile} onUpdateProfile={(p)=>{ setBusinessProfile(p); localStorage.setItem('hub_profile', JSON.stringify(p)); }} onUpdatePin={(p)=>setPin(p)} />}
         </div>
       </main>

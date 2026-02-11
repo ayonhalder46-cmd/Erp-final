@@ -22,7 +22,9 @@ import {
   BrainCircuit,
   ActivitySquare,
   BookOpenCheck,
-  FileSpreadsheet
+  FileSpreadsheet,
+  HelpCircle,
+  Shield
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -33,10 +35,10 @@ interface SidebarProps {
   syncStatus: SyncStatus;
   onLock: () => void;
   onClose?: () => void;
-  businessName?: string;
+  onToggleTutorial?: () => void;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange, theme, onToggleTheme, syncStatus, onLock, onClose, businessName }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange, theme, onToggleTheme, syncStatus, onLock, onClose, onToggleTutorial }) => {
   // Simplified menu structure for end-users
   const menuItems: { id: ViewState; label: string; icon: React.ReactNode; group?: string }[] = [
     { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={20} /> },
@@ -55,12 +57,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange, the
     { id: 'expenses', label: 'Expenses', icon: <Wallet size={20} /> },
     { id: 'returns', label: 'Returns / RMA', icon: <RotateCcw size={20} /> },
     { id: 'reports', label: 'Financial Reports', icon: <BarChart3 size={20} /> },
-    { id: 'spreadsheet', label: 'Master Grid', icon: <FileSpreadsheet size={20} /> },
+    { id: 'spreadsheet', label: 'Spreadsheet View', icon: <FileSpreadsheet size={20} /> },
     
     // Tools
     { id: 'calculator', label: 'Pricing Tool', icon: <Calculator size={20} /> },
     { id: 'advisor', label: 'AI Advisor', icon: <BrainCircuit size={20} /> },
     { id: 'tester', label: 'System Health', icon: <ActivitySquare size={20} /> },
+    { id: 'audit', label: 'System Diagnostic', icon: <Shield size={20} /> },
     { id: 'settings', label: 'Settings', icon: <SettingsIcon size={20} /> },
   ];
 
@@ -134,6 +137,17 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange, the
           >
             {theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}
           </button>
+          
+          {onToggleTutorial && (
+            <button 
+                onClick={onToggleTutorial}
+                className="p-3 text-slate-400 hover:text-indigo-600 dark:hover:text-white hover:bg-indigo-50 dark:hover:bg-indigo-500/20 rounded-xl transition-all"
+                title="Help & Guide"
+            >
+                <HelpCircle size={20} />
+            </button>
+          )}
+
           <button 
             onClick={onLock}
             className="p-3 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-xl transition-all"

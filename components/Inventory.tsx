@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Product, ProductVariant, Supplier } from '../types';
-import { Plus, Edit2, Trash2, Search, X, Undo2, Redo2, Layers, Package, ImageIcon, Upload, Image as ImageIconLucide, ChevronLeft, ChevronRight, Filter, ChevronDown, AlertCircle, AlertTriangle, BadgeDollarSign, BarChart2, Palette, Ruler } from 'lucide-react';
+import { Plus, Edit2, Trash2, Search, X, Layers, Package, ImageIcon, Upload, Image as ImageIconLucide, ChevronLeft, ChevronRight, Filter, ChevronDown, AlertCircle, AlertTriangle, BadgeDollarSign, BarChart2, Palette, Ruler } from 'lucide-react';
 
 interface InventoryProps {
   products: Product[];
@@ -9,10 +9,6 @@ interface InventoryProps {
   onAddProduct: (p: Product) => void;
   onUpdateProduct: (p: Product) => void;
   onDeleteProduct: (id: string) => void;
-  canUndo: boolean;
-  canRedo: boolean;
-  onUndo: () => void;
-  onRedo: () => void;
   notify?: (msg: string, type: 'success' | 'error' | 'info') => void;
 }
 
@@ -25,8 +21,7 @@ const CATEGORY_PREFIXES: Record<string, string> = {
 };
 
 export const Inventory: React.FC<InventoryProps> = ({ 
-  products, suppliers, onAddProduct, onUpdateProduct, onDeleteProduct,
-  canUndo, canRedo, onUndo, onRedo, notify
+  products, suppliers, onAddProduct, onUpdateProduct, onDeleteProduct, notify
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');

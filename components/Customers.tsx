@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { Customer, Sale } from '../types';
-import { Mail, Phone, User, Calendar, Plus, X, Edit2, Trash2, Award, Undo2, Redo2, MapPin, History, ChevronRight, BarChart } from 'lucide-react';
+import { Mail, Phone, User, Calendar, Plus, X, Edit2, Trash2, Award, MapPin, History, ChevronRight, BarChart } from 'lucide-react';
 
 interface CustomersProps {
   customers: Customer[];
@@ -9,15 +9,10 @@ interface CustomersProps {
   onAdd: (c: Customer) => void;
   onUpdate: (c: Customer) => void;
   onDelete: (id: string) => void;
-  canUndo: boolean;
-  canRedo: boolean;
-  onUndo: () => void;
-  onRedo: () => void;
 }
 
 export const Customers: React.FC<CustomersProps> = ({ 
-  customers, sales, onAdd, onUpdate, onDelete,
-  canUndo, canRedo, onUndo, onRedo
+  customers, sales, onAdd, onUpdate, onDelete
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [historyModalOpen, setHistoryModalOpen] = useState(false);
@@ -93,11 +88,6 @@ export const Customers: React.FC<CustomersProps> = ({
           <p className="text-slate-500 dark:text-slate-400 text-sm font-medium">Active CRM and loyalty tracking for {customers.length} clients.</p>
         </div>
         <div className="flex items-center gap-2 w-full sm:w-auto">
-          <div className="flex bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-1 shadow-sm mr-2">
-            <button onClick={onUndo} disabled={!canUndo} className="p-2 text-slate-400 hover:text-indigo-600 disabled:opacity-20 transition-colors" title="Undo"><Undo2 size={18}/></button>
-            <div className="w-[1px] bg-slate-100 dark:bg-slate-800 mx-1" />
-            <button onClick={onRedo} disabled={!canRedo} className="p-2 text-slate-400 hover:text-indigo-600 disabled:opacity-20 transition-colors" title="Redo"><Redo2 size={18}/></button>
-          </div>
           <button 
             onClick={() => handleOpenModal()}
             className="flex-1 sm:flex-none bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3.5 rounded-2xl flex items-center justify-center gap-2 font-bold shadow-lg transition-all active:scale-95"

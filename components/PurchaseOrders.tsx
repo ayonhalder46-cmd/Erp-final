@@ -321,7 +321,7 @@ export const PurchaseOrders: React.FC<PurchaseOrdersProps> = ({ purchaseOrders, 
                 </button>
                 {po.status === 'Ordered' && (
                   <button 
-                    onClick={() => { if(confirm('Confirm goods receipt? This will update inventory levels and create an expense record.')) onReceivePO(po) }}
+                    onClick={() => { if(confirm('Confirm goods receipt? This will update inventory levels and Weighted Average Costs. (Asset Investment, NOT Expense)')) onReceivePO(po) }}
                     className="bg-green-600 hover:bg-green-700 text-white px-5 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 shadow-lg active:scale-95 transition-all"
                   >
                     <CheckCircle2 size={14} /> Receive

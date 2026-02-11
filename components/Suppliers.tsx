@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { Supplier, Product } from '../types';
-import { Plus, Phone, Mail, Trash2, Truck, Users, X, Edit2, Undo2, Redo2, Package } from 'lucide-react';
+import { Plus, Phone, Mail, Trash2, Truck, Users, X, Edit2, Package } from 'lucide-react';
 
 // Define the categories for sourcing domain selection.
 const CATEGORIES = [
@@ -21,15 +21,10 @@ interface SuppliersProps {
   onAdd: (s: Supplier) => void;
   onUpdate: (s: Supplier) => void;
   onDelete: (id: string) => void;
-  canUndo: boolean;
-  canRedo: boolean;
-  onUndo: () => void;
-  onRedo: () => void;
 }
 
 export const Suppliers: React.FC<SuppliersProps> = ({ 
-  suppliers, products, onAdd, onUpdate, onDelete,
-  canUndo, canRedo, onUndo, onRedo 
+  suppliers, products, onAdd, onUpdate, onDelete
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -70,11 +65,6 @@ export const Suppliers: React.FC<SuppliersProps> = ({
           <p className="text-slate-500 dark:text-slate-400 text-sm">Manage sourcing channels and vendor relationships.</p>
         </div>
         <div className="flex items-center gap-2 w-full sm:w-auto">
-          <div className="flex bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-1 shadow-sm mr-2">
-            <button onClick={onUndo} disabled={!canUndo} className="p-2 text-slate-400 hover:text-indigo-600 disabled:opacity-20 transition-colors" title="Undo"><Undo2 size={18}/></button>
-            <div className="w-[1px] bg-slate-100 dark:bg-slate-800 mx-1" />
-            <button onClick={onRedo} disabled={!canRedo} className="p-2 text-slate-400 hover:text-indigo-600 disabled:opacity-20 transition-colors" title="Redo"><Redo2 size={18}/></button>
-          </div>
           <button 
             onClick={() => handleOpenModal()}
             className="flex-1 sm:flex-none bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-xl flex items-center justify-center gap-2 font-bold transition-all shadow-md active:scale-95"
