@@ -39,12 +39,19 @@
       .responsive-table-container {
         width: 100%;
         overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
         position: relative;
         background: inherit;
+        border-radius: inherit;
       }
       
-      table {
-        min-width: 700px; /* Minimum width to prevent column collapse on mobile */
+      .responsive-table-container table {
+        min-width: 800px; /* Minimum width to prevent column collapse on mobile */
+      }
+
+      /* Allow some tables to be smaller if they have fewer columns */
+      .responsive-table-container.compact-table table {
+        min-width: 500px;
       }
 
       /* Android Pull-to-refresh color */
@@ -78,22 +85,10 @@
         }
       }
     </script>
-    <script type="importmap">
-{
-  "imports": {
-    "@google/genai": "https://esm.sh/@google/genai@^1.34.0",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
-    "recharts": "https://esm.sh/recharts@^3.6.0",
-    "react/": "https://esm.sh/react@^19.2.3/",
-    "react": "https://esm.sh/react@^19.2.3",
-    "html2pdf.js": "https://esm.sh/html2pdf.js@^0.14.0"
-  }
-}
-</script>
-  </head>
+  <link rel="stylesheet" href="/index.css">
+</head>
   <body class="bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 selection:bg-indigo-500 overflow-x-hidden">
     <div id="root"></div>
-    <script type="module" src="./index.tsx"></script>
-  </body>
+    <script type="module" src="/index.tsx"></script>
+</body>
 </html>

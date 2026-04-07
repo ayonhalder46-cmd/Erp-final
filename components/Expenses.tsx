@@ -203,16 +203,16 @@ export const Expenses: React.FC<ExpensesProps> = ({ expenses, onAdd, onUpdate, o
       </div>
 
       {isModalOpen && (
-        <div className="fixed inset-0 z-[100] bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
-           <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-[2.5rem] p-10 shadow-2xl animate-in zoom-in-95 border border-slate-200 dark:border-slate-800">
-              <div className="flex justify-between items-center mb-8">
+        <div className="fixed inset-0 z-[100] bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+           <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-[2rem] sm:rounded-[2.5rem] p-6 sm:p-10 shadow-2xl animate-in zoom-in-95 border border-slate-200 dark:border-slate-800 my-auto">
+              <div className="flex justify-between items-center mb-6 sm:mb-8 shrink-0">
                 <div>
-                  <h3 className="text-2xl font-serif font-bold text-slate-900 dark:text-white">{editingId ? 'Edit Transaction' : 'New Expense'}</h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Log an operational cost or payment.</p>
+                  <h3 className="text-xl sm:text-2xl font-serif font-bold text-slate-900 dark:text-white">{editingId ? 'Edit Transaction' : 'New Expense'}</h3>
+                  <p className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 mt-1">Log an operational cost or payment.</p>
                 </div>
                 <button onClick={() => setIsModalOpen(false)} className="p-2 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-red-500 transition-colors"><X size={20}/></button>
               </div>
-              <form onSubmit={handleSubmit} className="space-y-6">
+              <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
                  <div className="grid grid-cols-2 gap-4">
                     <div>
                        <label className="block text-[10px] uppercase font-black text-slate-400 tracking-widest mb-1.5 ml-1">Date</label>

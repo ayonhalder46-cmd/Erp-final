@@ -24,7 +24,8 @@ import {
   BookOpenCheck,
   FileSpreadsheet,
   HelpCircle,
-  Shield
+  Shield,
+  Bot
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -62,6 +63,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange, the
     // Tools
     { id: 'calculator', label: 'Pricing Tool', icon: <Calculator size={20} /> },
     { id: 'advisor', label: 'AI Advisor', icon: <BrainCircuit size={20} /> },
+    { id: 'ai_accountant', label: 'AI Accountant', icon: <Bot size={20} /> },
     { id: 'tester', label: 'System Health', icon: <ActivitySquare size={20} /> },
     { id: 'audit', label: 'Audit Logs (Diagnostic)', icon: <Shield size={20} /> },
     { id: 'settings', label: 'Settings', icon: <SettingsIcon size={20} /> },
@@ -91,7 +93,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange, the
           )}
         </div>
 
-        <nav className="space-y-1 overflow-y-auto max-h-[calc(100vh-220px)] custom-scrollbar pr-2">
+        <nav className="space-y-1 overflow-y-auto max-h-[calc(100dvh-220px)] custom-scrollbar pr-2">
           {menuItems.map((item) => (
             <button
               key={item.id}

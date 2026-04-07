@@ -182,16 +182,16 @@ export const Customers: React.FC<CustomersProps> = ({
 
       {/* Edit/Create Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-[3rem] shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-300 border border-slate-200 dark:border-slate-800">
-            <div className="px-10 py-8 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/80 flex justify-between items-center">
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-2 sm:p-4 overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 rounded-[2rem] sm:rounded-[3rem] shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-300 border border-slate-200 dark:border-slate-800 my-auto">
+            <div className="px-6 py-6 sm:px-10 sm:py-8 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/80 flex justify-between items-center shrink-0">
               <div>
-                <h3 className="text-2xl font-serif font-bold text-slate-800 dark:text-white">{editingId ? 'Modify Partner Account' : 'Initialize Client Profile'}</h3>
-                <p className="text-slate-500 dark:text-slate-400 text-xs mt-1 font-medium">Logistics and CRM metadata configuration.</p>
+                <h3 className="text-xl sm:text-2xl font-serif font-bold text-slate-800 dark:text-white">{editingId ? 'Modify Partner Account' : 'Initialize Client Profile'}</h3>
+                <p className="text-slate-500 dark:text-slate-400 text-[10px] sm:text-xs mt-1 font-medium">Logistics and CRM metadata configuration.</p>
               </div>
-              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-white p-3 rounded-full transition-colors"><X size={24}/></button>
+              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-white p-2 rounded-full transition-colors"><X size={20}/></button>
             </div>
-            <form onSubmit={handleSubmit} className="p-10 space-y-8">
+            <form onSubmit={handleSubmit} className="p-6 sm:p-10 space-y-6 sm:space-y-8">
               <div className="space-y-2">
                 <label className="block text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] mb-1.5 ml-1">Account Holder Full Name</label>
                 <input required className="w-full p-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 dark:text-white font-bold transition-all" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="e.g. Johnathan Smith / Acme Retailers" />
@@ -228,7 +228,7 @@ export const Customers: React.FC<CustomersProps> = ({
       {/* History Modal */}
       {historyModalOpen && selectedCustomerForHistory && (
         <div className="fixed inset-0 z-[130] flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-[3rem] shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in-95 duration-300 border border-slate-200 dark:border-slate-800 flex flex-col max-h-[80vh]">
+          <div className="bg-white dark:bg-slate-900 rounded-[3rem] shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in-95 duration-300 border border-slate-200 dark:border-slate-800 flex flex-col max-h-[80dvh]">
             <div className="px-10 py-8 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/80 flex justify-between items-center shrink-0">
               <div>
                 <h3 className="text-2xl font-serif font-bold text-slate-800 dark:text-white">Purchase History</h3>

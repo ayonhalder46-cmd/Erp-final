@@ -5,7 +5,7 @@ import { ApiService } from './apiService';
 import { 
   PlayCircle, CheckCircle2, XCircle, RefreshCw, Terminal, Activity, 
   Save, Truck, Layers, ShoppingCart, RotateCcw, Wallet, Users, ToggleLeft, ToggleRight,
-  Copy, Loader2, AlertTriangle, ShieldCheck, Trash2, Ban, CheckSquare, Clock
+  Copy, Loader2, AlertTriangle, ShieldCheck, Trash2, Ban, CheckSquare, Clock, Info
 } from 'lucide-react';
 
 interface WorkflowTesterProps {
@@ -55,6 +55,8 @@ export const WorkflowTester: React.FC<WorkflowTesterProps> = (props) => {
   const [isRunning, setIsRunning] = useState(false);
   const [autoCleanup, setAutoCleanup] = useState(true);
   const [progress, setProgress] = useState(0);
+  const [confirmDialog, setConfirmDialog] = useState<{isOpen: boolean, message: string, onConfirm: () => void}>({ isOpen: false, message: '', onConfirm: () => {} });
+  const [alertDialog, setAlertDialog] = useState<{isOpen: boolean, message: string}>({ isOpen: false, message: '' });
   const logContainerRef = useRef<HTMLDivElement>(null);
 
   // Unique ID prefix for this session to track data
@@ -113,29 +115,33 @@ export const WorkflowTester: React.FC<WorkflowTesterProps> = (props) => {
 
   // --- MANUAL PURGE TOOL ---
   const purgeOldData = async () => {
-    if(!confirm("Scan database for 'DIAG-' prefixed test data and delete it?")) return;
-    
-    let count = 0;
-    const tables = ['products', 'sales', 'customers', 'suppliers', 'expenses', 'returns', 'purchaseOrders'];
-    
-    for (const table of tables) {
-        const data = await ApiService.fetchLatest(table) || [];
-        const toDelete = data.filter((item: any) => item.id.startsWith('DIAG-'));
+    setConfirmDialog({
+      isOpen: true,
+      message: "Scan database for 'DIAG-' prefixed test data and delete it?",
+      onConfirm: async () => {
+        let count = 0;
+        const tables = ['products', 'sales', 'customers', 'suppliers', 'expenses', 'returns', 'purchaseOrders'];
         
-        if (toDelete.length > 0) {
-            count += toDelete.length;
-            toDelete.forEach((item: any) => {
-                if (table === 'products') props.onDeleteProduct(item.id);
-                if (table === 'sales') props.onDeleteSale(item.id);
-                if (table === 'customers') props.onDeleteCustomer(item.id);
-                if (table === 'suppliers') props.onDeleteSupplier(item.id);
-                if (table === 'expenses') props.onDeleteExpense(item.id);
-                if (table === 'returns') props.onDeleteReturn(item.id);
-                if (table === 'purchaseOrders') props.onDeletePO(item.id);
-            });
+        for (const table of tables) {
+            const data = await ApiService.fetchLatest(table) || [];
+            const toDelete = data.filter((item: any) => item.id.startsWith('DIAG-'));
+            
+            if (toDelete.length > 0) {
+                count += toDelete.length;
+                toDelete.forEach((item: any) => {
+                    if (table === 'products') props.onDeleteProduct(item.id);
+                    if (table === 'sales') props.onDeleteSale(item.id);
+                    if (table === 'customers') props.onDeleteCustomer(item.id);
+                    if (table === 'suppliers') props.onDeleteSupplier(item.id);
+                    if (table === 'expenses') props.onDeleteExpense(item.id);
+                    if (table === 'returns') props.onDeleteReturn(item.id);
+                    if (table === 'purchaseOrders') props.onDeletePO(item.id);
+                });
+            }
         }
-    }
-    alert(`Cleanup complete. Removed ${count} residual test records.`);
+        setAlertDialog({ isOpen: true, message: `Cleanup complete. Removed ${count} residual test records.` });
+      }
+    });
   };
 
   // --- TEST LOGIC ---
@@ -768,6 +774,65 @@ export const WorkflowTester: React.FC<WorkflowTesterProps> = (props) => {
               </div>
           </div>
       </div>
+
+      {/* Custom Confirm Dialog */}
+      {confirmDialog.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl p-8 max-w-md w-full shadow-2xl border border-slate-200 dark:border-slate-800 animate-in fade-in zoom-in duration-200">
+            <div className="flex items-center gap-4 mb-6">
+              <div className="p-3 rounded-full bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400">
+                <AlertTriangle size={24} />
+              </div>
+              <h3 className="text-xl font-bold text-slate-900 dark:text-white">Confirmation Required</h3>
+            </div>
+            <p className="text-slate-600 dark:text-slate-400 mb-8 leading-relaxed whitespace-pre-wrap">
+              {confirmDialog.message}
+            </p>
+            <div className="flex justify-end gap-3">
+              <button 
+                onClick={() => setConfirmDialog({ ...confirmDialog, isOpen: false })}
+                className="px-6 py-3 rounded-xl font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={() => {
+                  confirmDialog.onConfirm();
+                  setConfirmDialog({ ...confirmDialog, isOpen: false });
+                }}
+                className="px-6 py-3 rounded-xl font-semibold text-white transition-all shadow-lg hover:shadow-xl active:scale-95 bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/20"
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Alert Dialog */}
+      {alertDialog.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl p-8 max-w-md w-full shadow-2xl border border-slate-200 dark:border-slate-800 animate-in fade-in zoom-in duration-200">
+            <div className="flex items-center gap-4 mb-6">
+              <div className="p-3 rounded-full bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400">
+                <Info size={24} />
+              </div>
+              <h3 className="text-xl font-bold text-slate-900 dark:text-white">Information</h3>
+            </div>
+            <p className="text-slate-600 dark:text-slate-400 mb-8 leading-relaxed whitespace-pre-wrap">
+              {alertDialog.message}
+            </p>
+            <div className="flex justify-end">
+              <button 
+                onClick={() => setAlertDialog({ ...alertDialog, isOpen: false })}
+                className="px-6 py-3 rounded-xl font-semibold text-white transition-all shadow-lg hover:shadow-xl active:scale-95 bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/20"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

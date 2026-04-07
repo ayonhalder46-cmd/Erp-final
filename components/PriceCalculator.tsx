@@ -32,6 +32,7 @@ export const PriceCalculator: React.FC<PriceCalculatorProps> = ({ products = [],
   const [batchItems, setBatchItems] = useState<BatchItem[]>([]);
   const [grandTotalFees, setGrandTotalFees] = useState<number>(0); // Shipping + Customs + Clearing
   const [searchQuery, setSearchQuery] = useState('');
+  const [confirmDialog, setConfirmDialog] = useState<{isOpen: boolean, message: string, onConfirm: () => void}>({ isOpen: false, message: '', onConfirm: () => {} });
 
   // --- CALCULATIONS ---
 
@@ -121,46 +122,50 @@ export const PriceCalculator: React.FC<PriceCalculatorProps> = ({ products = [],
   };
 
   const handleCommitInventory = () => {
-    if (!confirm(`CONFIRM IMPORT?\n\nThis will add stock and update Cost Prices (Weighted Average) for ${batchItems.length} items.\n\nTotal Investment: ৳${totalLandedValue.toLocaleString()}`)) return;
+    setConfirmDialog({
+      isOpen: true,
+      message: `CONFIRM IMPORT?\n\nThis will add stock and update Cost Prices (Weighted Average) for ${batchItems.length} items.\n\nTotal Investment: ৳${totalLandedValue.toLocaleString()}`,
+      onConfirm: () => {
+        // Map to store latest state of products being updated
+        const updatesMap = new Map<string, Product>();
 
-    // Map to store latest state of products being updated
-    const updatesMap = new Map<string, Product>();
+        batchCalculations.forEach(calc => {
+          // Get the base product from either our local updates map or the main product list
+          const baseProduct = updatesMap.get(calc.productId) || products.find(p => p.id === calc.productId);
+          
+          if (baseProduct) {
+            // Deep clone to safely mutate
+            const updatedProduct = JSON.parse(JSON.stringify(baseProduct)) as Product;
 
-    batchCalculations.forEach(calc => {
-      // Get the base product from either our local updates map or the main product list
-      const baseProduct = updatesMap.get(calc.productId) || products.find(p => p.id === calc.productId);
-      
-      if (baseProduct) {
-        // Deep clone to safely mutate
-        const updatedProduct = JSON.parse(JSON.stringify(baseProduct)) as Product;
+            if (calc.variantId && updatedProduct.variants) {
+               const vIndex = updatedProduct.variants.findIndex(v => v.id === calc.variantId);
+               if (vIndex > -1) {
+                 updatedProduct.variants[vIndex].stockLevel += calc.batchQty;
+                 // Store price with 2 decimal precision
+                 updatedProduct.variants[vIndex].costPrice = Math.round((calc.newAvgCost + Number.EPSILON) * 100) / 100;
+               }
+            } else {
+               updatedProduct.stockLevel += calc.batchQty;
+               updatedProduct.costPrice = Math.round((calc.newAvgCost + Number.EPSILON) * 100) / 100;
+            }
+            
+            updatesMap.set(updatedProduct.id, updatedProduct);
+          }
+        });
 
-        if (calc.variantId && updatedProduct.variants) {
-           const vIndex = updatedProduct.variants.findIndex(v => v.id === calc.variantId);
-           if (vIndex > -1) {
-             updatedProduct.variants[vIndex].stockLevel += calc.batchQty;
-             // Store price with 2 decimal precision
-             updatedProduct.variants[vIndex].costPrice = Math.round((calc.newAvgCost + Number.EPSILON) * 100) / 100;
-           }
-        } else {
-           updatedProduct.stockLevel += calc.batchQty;
-           updatedProduct.costPrice = Math.round((calc.newAvgCost + Number.EPSILON) * 100) / 100;
+        const finalUpdates = Array.from(updatesMap.values());
+
+        if (onBulkUpdateProduct) {
+            onBulkUpdateProduct(finalUpdates);
+        } else if (onUpdateProduct) {
+            // Fallback for individual updates if bulk prop missing (legacy support)
+            finalUpdates.forEach(p => onUpdateProduct(p));
         }
         
-        updatesMap.set(updatedProduct.id, updatedProduct);
+        setBatchItems([]);
+        setGrandTotalFees(0);
       }
     });
-
-    const finalUpdates = Array.from(updatesMap.values());
-
-    if (onBulkUpdateProduct) {
-        onBulkUpdateProduct(finalUpdates);
-    } else if (onUpdateProduct) {
-        // Fallback for individual updates if bulk prop missing (legacy support)
-        finalUpdates.forEach(p => onUpdateProduct(p));
-    }
-    
-    setBatchItems([]);
-    setGrandTotalFees(0);
   };
 
   const filteredProducts = products.filter(p => 
@@ -327,8 +332,8 @@ export const PriceCalculator: React.FC<PriceCalculatorProps> = ({ products = [],
 
              {/* Calculation Table */}
              {batchItems.length > 0 && (
-                 <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden flex-1">
-                    <div className="overflow-x-auto">
+                 <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm flex-1 overflow-hidden flex flex-col">
+                     <div className="responsive-table-container flex-1">
                        <table className="w-full text-left text-sm whitespace-nowrap">
                           <thead className="bg-slate-50 dark:bg-slate-800 text-[10px] font-black uppercase text-slate-500 tracking-widest">
                              <tr>
@@ -404,26 +409,26 @@ export const PriceCalculator: React.FC<PriceCalculatorProps> = ({ products = [],
       )}
 
       {mode === 'single' && (
-        <div className="max-w-2xl mx-auto bg-white dark:bg-slate-900 rounded-[3rem] p-12 border border-slate-200 dark:border-slate-800 shadow-xl animate-in zoom-in-95">
-           <h3 className="text-3xl font-serif font-bold text-center mb-10 text-slate-900 dark:text-white">Quick Simulator</h3>
+        <div className="max-w-2xl mx-auto bg-white dark:bg-slate-900 rounded-[2rem] sm:rounded-[3rem] p-6 sm:p-12 border border-slate-200 dark:border-slate-800 shadow-xl animate-in zoom-in-95">
+           <h3 className="text-2xl sm:text-3xl font-serif font-bold text-center mb-6 sm:mb-10 text-slate-900 dark:text-white">Quick Simulator</h3>
            
-           <div className="space-y-8">
+           <div className="space-y-6 sm:space-y-8">
               <div>
                  <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-3">Cost Price (Supplier)</label>
                  <div className="relative">
-                    <span className="absolute left-6 top-1/2 -translate-y-1/2 font-bold text-slate-400 text-xl">৳</span>
-                    <input type="number" min="0" className="w-full pl-12 p-6 bg-slate-50 dark:bg-slate-800 rounded-[1.5rem] font-bold text-3xl outline-none focus:ring-4 focus:ring-indigo-500/10 transition-all text-slate-800 dark:text-white" value={simCost} onChange={e => setSimCost(Math.max(0, Number(e.target.value)))} />
+                    <span className="absolute left-4 sm:left-6 top-1/2 -translate-y-1/2 font-bold text-slate-400 text-lg sm:text-xl">৳</span>
+                    <input type="number" min="0" className="w-full pl-10 sm:pl-12 p-4 sm:p-6 bg-slate-50 dark:bg-slate-800 rounded-xl sm:rounded-[1.5rem] font-bold text-xl sm:text-3xl outline-none focus:ring-4 focus:ring-indigo-500/10 transition-all text-slate-800 dark:text-white" value={simCost} onChange={e => setSimCost(Math.max(0, Number(e.target.value)))} />
                  </div>
               </div>
               
-              <div className="grid grid-cols-2 gap-8">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-8">
                  <div>
                     <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-3">Extra Costs (Flat)</label>
-                    <input type="number" min="0" className="w-full p-5 bg-slate-50 dark:bg-slate-800 rounded-2xl font-bold text-xl outline-none" value={simExtra} onChange={e => setSimExtra(Math.max(0, Number(e.target.value)))} />
+                    <input type="number" min="0" className="w-full p-4 sm:p-5 bg-slate-50 dark:bg-slate-800 rounded-xl sm:rounded-2xl font-bold text-lg sm:text-xl outline-none" value={simExtra} onChange={e => setSimExtra(Math.max(0, Number(e.target.value)))} />
                  </div>
                  <div>
                     <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-3">Margin %</label>
-                    <input type="number" className="w-full p-5 bg-slate-50 dark:bg-slate-800 rounded-2xl font-bold text-xl outline-none" value={simMargin} onChange={e => setSimMargin(Number(e.target.value))} />
+                    <input type="number" className="w-full p-4 sm:p-5 bg-slate-50 dark:bg-slate-800 rounded-xl sm:rounded-2xl font-bold text-lg sm:text-xl outline-none" value={simMargin} onChange={e => setSimMargin(Number(e.target.value))} />
                  </div>
               </div>
 
@@ -438,6 +443,40 @@ export const PriceCalculator: React.FC<PriceCalculatorProps> = ({ products = [],
                  </div>
               </div>
            </div>
+        </div>
+      )}
+
+      {/* Custom Confirm Dialog */}
+      {confirmDialog.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl p-8 max-w-md w-full shadow-2xl border border-slate-200 dark:border-slate-800 animate-in fade-in zoom-in duration-200">
+            <div className="flex items-center gap-4 mb-6">
+              <div className="p-3 rounded-full bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400">
+                <AlertCircle size={24} />
+              </div>
+              <h3 className="text-xl font-bold text-slate-900 dark:text-white">Confirmation Required</h3>
+            </div>
+            <p className="text-slate-600 dark:text-slate-400 mb-8 leading-relaxed whitespace-pre-wrap">
+              {confirmDialog.message}
+            </p>
+            <div className="flex justify-end gap-3">
+              <button 
+                onClick={() => setConfirmDialog({ ...confirmDialog, isOpen: false })}
+                className="px-6 py-3 rounded-xl font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={() => {
+                  confirmDialog.onConfirm();
+                  setConfirmDialog({ ...confirmDialog, isOpen: false });
+                }}
+                className="px-6 py-3 rounded-xl font-semibold text-white transition-all shadow-lg hover:shadow-xl active:scale-95 bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/20"
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

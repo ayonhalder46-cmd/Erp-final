@@ -45,6 +45,9 @@ export const Settings: React.FC<SettingsProps> = ({
   const [profileForm, setProfileForm] = useState(businessProfile);
   const [newPin, setNewPin] = useState('');
 
+  const [confirmDialog, setConfirmDialog] = useState<{isOpen: boolean, message: string, onConfirm: () => void, isDestructive?: boolean}>({ isOpen: false, message: '', onConfirm: () => {} });
+  const [alertDialog, setAlertDialog] = useState<{isOpen: boolean, message: string}>({ isOpen: false, message: '' });
+
   useEffect(() => {
     ApiService.getStorageSize().then(size => setStorageUsed(size));
   }, []);
@@ -71,8 +74,13 @@ export const Settings: React.FC<SettingsProps> = ({
     const purchaseOrders = await ApiService.fetchLatest('purchaseOrders') || [];
     const periodSummaries = await ApiService.fetchLatest('period_summaries') || [];
     
+    const profile = localStorage.getItem('hub_profile');
+    const pin = localStorage.getItem('hub_pin');
+
     const data = { 
         products, sales, customers, suppliers, expenses, returns, purchaseOrders, periodSummaries,
+        profile: profile ? JSON.parse(profile) : undefined,
+        pin: pin || undefined,
         exportedAt: new Date().toISOString() 
     };
     
@@ -92,34 +100,46 @@ export const Settings: React.FC<SettingsProps> = ({
   const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!confirm("Caution: This will overwrite current data. Proceed?")) return;
+    
+    setConfirmDialog({
+      isOpen: true,
+      message: "Caution: This will overwrite current data. Proceed?",
+      isDestructive: true,
+      onConfirm: () => {
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+          try {
+            const data = JSON.parse(event.target?.result as string);
+            if (data.products) await ApiService.pushUpdate('products', data.products);
+            if (data.sales) await ApiService.pushUpdate('sales', data.sales);
+            if (data.customers) await ApiService.pushUpdate('customers', data.customers);
+            if (data.suppliers) await ApiService.pushUpdate('suppliers', data.suppliers);
+            if (data.expenses) await ApiService.pushUpdate('expenses', data.expenses);
+            if (data.returns) await ApiService.pushUpdate('returns', data.returns);
+            if (data.purchaseOrders) await ApiService.pushUpdate('purchaseOrders', data.purchaseOrders);
+            if (data.periodSummaries) await ApiService.pushUpdate('period_summaries', data.periodSummaries);
+            
+            if (data.profile) localStorage.setItem('hub_profile', JSON.stringify(data.profile));
+            if (data.pin) localStorage.setItem('hub_pin', data.pin);
 
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      try {
-        const data = JSON.parse(event.target?.result as string);
-        if (data.products) await ApiService.pushUpdate('products', data.products);
-        if (data.sales) await ApiService.pushUpdate('sales', data.sales);
-        if (data.customers) await ApiService.pushUpdate('customers', data.customers);
-        if (data.suppliers) await ApiService.pushUpdate('suppliers', data.suppliers);
-        if (data.expenses) await ApiService.pushUpdate('expenses', data.expenses);
-        if (data.returns) await ApiService.pushUpdate('returns', data.returns);
-        if (data.purchaseOrders) await ApiService.pushUpdate('purchaseOrders', data.purchaseOrders);
-        if (data.periodSummaries) await ApiService.pushUpdate('period_summaries', data.periodSummaries);
-        
-        window.location.reload();
-      } catch (err) {
-        alert("Import failed. Invalid file format.");
+            window.location.reload();
+          } catch (err) {
+            setAlertDialog({ isOpen: true, message: "Import failed. Invalid file format or corrupted data." });
+          }
+        };
+        reader.readAsText(file);
       }
-    };
-    reader.readAsText(file);
+    });
+    
+    // Reset file input so the same file can be selected again
+    e.target.value = '';
   };
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       if (file.size > 500 * 1024) {
-        alert("Logo file too large. Max 500KB.");
+        setAlertDialog({ isOpen: true, message: "Logo file too large. Max 500KB." });
         return;
       }
       const reader = new FileReader();
@@ -130,11 +150,16 @@ export const Settings: React.FC<SettingsProps> = ({
     }
   };
 
-  const handleFactoryReset = async () => {
-    if (confirm("CRITICAL WARNING: This will permanently DELETE ALL DATA (Inventory, Sales, Customers) and reset the app to an empty state. This cannot be undone. Are you sure?")) {
-      setIsResetting(true);
-      await onFactoryReset();
-    }
+  const handleFactoryReset = () => {
+    setConfirmDialog({
+      isOpen: true,
+      message: "CRITICAL WARNING: This will permanently DELETE ALL DATA (Inventory, Sales, Customers) and reset the app to an empty state. This cannot be undone. Are you sure?",
+      isDestructive: true,
+      onConfirm: async () => {
+        setIsResetting(true);
+        await onFactoryReset();
+      }
+    });
   };
 
   return (
@@ -246,7 +271,7 @@ export const Settings: React.FC<SettingsProps> = ({
                  </div>
               </div>
               
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                  <div>
                     <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1.5 ml-1">Phone</label>
                     <input className="w-full p-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white font-bold text-sm transition-all" value={profileForm.phone} onChange={e => setProfileForm({...profileForm, phone: e.target.value})} />
@@ -260,7 +285,7 @@ export const Settings: React.FC<SettingsProps> = ({
                  <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1.5 ml-1">Address</label>
                  <input className="w-full p-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white font-bold text-sm transition-all" value={profileForm.address} onChange={e => setProfileForm({...profileForm, address: e.target.value})} />
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                  <div>
                     <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1.5 ml-1">Invoice Footer</label>
                     <input className="w-full p-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white font-bold text-sm transition-all" value={profileForm.footerMessage || ''} onChange={e => setProfileForm({...profileForm, footerMessage: e.target.value})} placeholder="Thank you message" />
@@ -305,7 +330,7 @@ export const Settings: React.FC<SettingsProps> = ({
                    />
                 </div>
                 <button 
-                  onClick={() => { if(newPin.length === 4) { onUpdatePin(newPin); setNewPin(''); alert('Security PIN Updated'); } }}
+                  onClick={() => { if(newPin.length === 4) { onUpdatePin(newPin); setNewPin(''); setAlertDialog({ isOpen: true, message: 'Security PIN Updated' }); } }}
                   disabled={newPin.length !== 4}
                   className="w-full py-4 bg-indigo-600 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-2xl font-bold transition-all active:scale-95 shadow-lg"
                 >
@@ -336,7 +361,14 @@ export const Settings: React.FC<SettingsProps> = ({
             
             <div className="space-y-4">
               <button 
-                onClick={() => { if(confirm("Permanently erase all order records?")) onPurgeSales(); }}
+                onClick={() => {
+                  setConfirmDialog({
+                    isOpen: true,
+                    message: "Permanently erase all order records?",
+                    isDestructive: true,
+                    onConfirm: onPurgeSales
+                  });
+                }}
                 className="w-full flex items-center justify-between p-6 bg-slate-50 dark:bg-slate-800/40 rounded-3xl hover:bg-red-50 dark:hover:bg-red-500/5 transition-all text-slate-700 dark:text-slate-300 group border border-transparent hover:border-red-100"
               >
                 <div className="text-left">
@@ -347,7 +379,14 @@ export const Settings: React.FC<SettingsProps> = ({
               </button>
 
               <button 
-                onClick={() => { if(confirm("Remove all inventory items?")) onPurgeInventory(); }}
+                onClick={() => {
+                  setConfirmDialog({
+                    isOpen: true,
+                    message: "Remove all inventory items?",
+                    isDestructive: true,
+                    onConfirm: onPurgeInventory
+                  });
+                }}
                 className="w-full flex items-center justify-between p-6 bg-slate-50 dark:bg-slate-800/40 rounded-3xl hover:bg-red-50 dark:hover:bg-red-500/5 transition-all text-slate-700 dark:text-slate-300 group border border-transparent hover:border-red-100"
               >
                 <div className="text-left">
@@ -378,6 +417,65 @@ export const Settings: React.FC<SettingsProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Custom Confirm Dialog */}
+      {confirmDialog.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl p-8 max-w-md w-full shadow-2xl border border-slate-200 dark:border-slate-800 animate-in fade-in zoom-in duration-200">
+            <div className="flex items-center gap-4 mb-6">
+              <div className={`p-3 rounded-full ${confirmDialog.isDestructive ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400' : 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400'}`}>
+                <AlertTriangle size={24} />
+              </div>
+              <h3 className="text-xl font-bold text-slate-900 dark:text-white">Confirmation Required</h3>
+            </div>
+            <p className="text-slate-600 dark:text-slate-400 mb-8 leading-relaxed">
+              {confirmDialog.message}
+            </p>
+            <div className="flex justify-end gap-3">
+              <button 
+                onClick={() => setConfirmDialog({ ...confirmDialog, isOpen: false })}
+                className="px-6 py-3 rounded-xl font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={() => {
+                  confirmDialog.onConfirm();
+                  setConfirmDialog({ ...confirmDialog, isOpen: false });
+                }}
+                className={`px-6 py-3 rounded-xl font-semibold text-white transition-all shadow-lg hover:shadow-xl active:scale-95 ${
+                  confirmDialog.isDestructive 
+                    ? 'bg-red-600 hover:bg-red-700 shadow-red-600/20' 
+                    : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/20'
+                }`}
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Alert Dialog */}
+      {alertDialog.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl p-8 max-w-sm w-full shadow-2xl border border-slate-200 dark:border-slate-800 animate-in fade-in zoom-in duration-200 text-center">
+            <div className="mx-auto w-16 h-16 bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400 rounded-full flex items-center justify-center mb-6">
+              <AlertTriangle size={32} />
+            </div>
+            <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-4">Notice</h3>
+            <p className="text-slate-600 dark:text-slate-400 mb-8">
+              {alertDialog.message}
+            </p>
+            <button 
+              onClick={() => setAlertDialog({ ...alertDialog, isOpen: false })}
+              className="w-full px-6 py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-bold transition-all shadow-lg shadow-indigo-600/20 active:scale-95"
+            >
+              Acknowledge
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

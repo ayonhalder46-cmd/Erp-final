@@ -272,9 +272,8 @@ export const Inventory: React.FC<InventoryProps> = ({
         </div>
       </div>
 
-      <div className="bg-white dark:bg-slate-900/60 rounded-[2.5rem] shadow-sm border border-slate-200 dark:border-slate-800 overflow-visible backdrop-blur-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm whitespace-nowrap">
+      <div className="bg-white dark:bg-slate-900/60 rounded-[2.5rem] shadow-sm border border-slate-200 dark:border-slate-800 backdrop-blur-sm responsive-table-container">
+        <table className="w-full text-left text-sm whitespace-nowrap">
             <thead className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
               <tr>
                 <th className="px-8 py-6 font-bold text-slate-600 dark:text-slate-300 text-[10px] uppercase tracking-widest">Product Details</th>
@@ -355,7 +354,6 @@ export const Inventory: React.FC<InventoryProps> = ({
               })}
             </tbody>
           </table>
-        </div>
         {totalPages > 1 && (
           <div className="px-8 py-6 border-t border-slate-100 dark:border-slate-700 flex justify-between items-center">
              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Page {currentPage} of {totalPages}</span>
@@ -368,17 +366,17 @@ export const Inventory: React.FC<InventoryProps> = ({
       </div>
 
       {isModalOpen && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 overflow-y-auto">
-          <div className="bg-white dark:bg-slate-900 rounded-[3rem] shadow-2xl w-full max-w-5xl overflow-hidden my-auto animate-in zoom-in-95 duration-300 border border-slate-200 dark:border-slate-800">
-            <div className="px-10 py-8 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/80 flex justify-between items-center">
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-2 sm:p-4 overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 rounded-[2rem] sm:rounded-[3rem] shadow-2xl w-full max-w-5xl overflow-hidden my-auto animate-in zoom-in-95 duration-300 border border-slate-200 dark:border-slate-800">
+            <div className="px-6 py-6 sm:px-10 sm:py-8 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/80 flex justify-between items-center shrink-0">
               <div>
-                <h3 className="text-2xl font-serif font-bold text-slate-800 dark:text-white">{editingId ? 'Edit Product Catalog' : 'New Product Entry'}</h3>
-                <p className="text-slate-600 dark:text-slate-400 text-xs mt-1 font-medium">Configure global details, imagery, and SKU variations.</p>
+                <h3 className="text-xl sm:text-2xl font-serif font-bold text-slate-800 dark:text-white">{editingId ? 'Edit Product Catalog' : 'New Product Entry'}</h3>
+                <p className="text-slate-600 dark:text-slate-400 text-[10px] sm:text-xs mt-1 font-medium">Configure global details, imagery, and SKU variations.</p>
               </div>
-              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-white p-2 rounded-full transition-colors"><X size={24}/></button>
+              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-white p-2 rounded-full transition-colors"><X size={20}/></button>
             </div>
             
-            <form onSubmit={handleSubmit} className="p-10 space-y-8 overflow-y-auto max-h-[75vh] custom-scrollbar">
+            <form onSubmit={handleSubmit} className="p-6 sm:p-10 space-y-6 sm:space-y-8 overflow-y-auto max-h-[85dvh] sm:max-h-[75dvh] custom-scrollbar">
               {errorMsg && <div className="bg-red-50 text-red-600 p-4 rounded-xl text-sm font-bold animate-pulse">{errorMsg}</div>}
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
                 <div className="lg:col-span-8 space-y-6">
@@ -472,8 +470,8 @@ export const Inventory: React.FC<InventoryProps> = ({
                               <button type="button" onClick={handleAddVariant} className="px-3 py-1.5 bg-slate-900 text-white text-xs font-bold rounded-lg flex items-center gap-1"><Plus size={12}/> Add</button>
                           </div>
                       </div>
-                      <div className="bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
-                          <table className="w-full text-left text-xs">
+                      <div className="bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden responsive-table-container">
+                          <table className="w-full text-left text-xs whitespace-nowrap">
                               <thead className="bg-slate-100 dark:bg-slate-900/50 font-bold text-slate-500 uppercase">
                                   <tr>
                                       <th className="px-4 py-3">{variantType}</th>

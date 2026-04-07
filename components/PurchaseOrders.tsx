@@ -14,6 +14,7 @@ interface PurchaseOrdersProps {
 
 export const PurchaseOrders: React.FC<PurchaseOrdersProps> = ({ purchaseOrders, products, suppliers, onCreatePO, onReceivePO, companyProfile }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState<{isOpen: boolean, message: string, onConfirm: () => void}>({ isOpen: false, message: '', onConfirm: () => {} });
   const [selectedSupplierId, setSelectedSupplierId] = useState('');
   const [poItems, setPoItems] = useState<PurchaseOrderItem[]>([]);
   const [notes, setNotes] = useState('');
@@ -321,7 +322,13 @@ export const PurchaseOrders: React.FC<PurchaseOrdersProps> = ({ purchaseOrders, 
                 </button>
                 {po.status === 'Ordered' && (
                   <button 
-                    onClick={() => { if(confirm('Confirm goods receipt? This will update inventory levels and Weighted Average Costs. (Asset Investment, NOT Expense)')) onReceivePO(po) }}
+                    onClick={() => {
+                      setConfirmDialog({
+                        isOpen: true,
+                        message: 'Confirm goods receipt? This will update inventory levels and Weighted Average Costs. (Asset Investment, NOT Expense)',
+                        onConfirm: () => onReceivePO(po)
+                      });
+                    }}
                     className="bg-green-600 hover:bg-green-700 text-white px-5 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 shadow-lg active:scale-95 transition-all"
                   >
                     <CheckCircle2 size={14} /> Receive
@@ -334,12 +341,12 @@ export const PurchaseOrders: React.FC<PurchaseOrdersProps> = ({ purchaseOrders, 
       </div>
 
       {isModalOpen && (
-        <div className="fixed inset-0 z-[120] bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-[3rem] shadow-2xl w-full max-w-4xl overflow-hidden animate-in zoom-in-95 border border-slate-200 dark:border-slate-800 flex flex-col max-h-[90vh]">
-            <div className="px-10 py-8 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-900/80 shrink-0">
+        <div className="fixed inset-0 z-[120] bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-0 sm:p-4 overflow-hidden">
+          <div className="bg-white dark:bg-slate-900 w-full h-full sm:h-auto sm:max-h-[90dvh] sm:max-w-4xl sm:rounded-[3rem] shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-300 border-none sm:border sm:border-slate-200 dark:sm:border-slate-800">
+            <div className="px-6 py-6 sm:px-10 sm:py-8 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-900/80 shrink-0">
               <div>
-                <h3 className="text-2xl font-serif font-bold text-slate-900 dark:text-white">New Purchase Order</h3>
-                <p className="text-slate-500 dark:text-slate-400 text-xs mt-1">Raise a requisition for stock replenishment.</p>
+                <h3 className="text-xl sm:text-2xl font-serif font-bold text-slate-900 dark:text-white">New Purchase Order</h3>
+                <p className="text-slate-500 dark:text-slate-400 text-[10px] sm:text-xs mt-1">Raise a requisition for stock replenishment.</p>
               </div>
               <button onClick={() => setIsModalOpen(false)} className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"><X size={24} /></button>
             </div>
@@ -470,6 +477,40 @@ export const PurchaseOrders: React.FC<PurchaseOrdersProps> = ({ purchaseOrders, 
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Confirm Dialog */}
+      {confirmDialog.isOpen && (
+        <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl p-8 max-w-md w-full shadow-2xl border border-slate-200 dark:border-slate-800 animate-in fade-in zoom-in duration-200">
+            <div className="flex items-center gap-4 mb-6">
+              <div className="p-3 rounded-full bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400">
+                <CheckCircle2 size={24} />
+              </div>
+              <h3 className="text-xl font-bold text-slate-900 dark:text-white">Confirmation Required</h3>
+            </div>
+            <p className="text-slate-600 dark:text-slate-400 mb-8 leading-relaxed">
+              {confirmDialog.message}
+            </p>
+            <div className="flex justify-end gap-3">
+              <button 
+                onClick={() => setConfirmDialog({ ...confirmDialog, isOpen: false })}
+                className="px-6 py-3 rounded-xl font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={() => {
+                  confirmDialog.onConfirm();
+                  setConfirmDialog({ ...confirmDialog, isOpen: false });
+                }}
+                className="px-6 py-3 rounded-xl font-semibold text-white transition-all shadow-lg hover:shadow-xl active:scale-95 bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/20"
+              >
+                Confirm
+              </button>
             </div>
           </div>
         </div>

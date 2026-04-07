@@ -13,6 +13,7 @@ import { PriceCalculator } from './components/PriceCalculator';
 import { Reports } from './components/Reports';
 import { Settings } from './components/Settings';
 import { Advisor } from './components/Advisor';
+import { AIAccountant } from './components/AIAccountant';
 import { PurchaseOrders } from './components/PurchaseOrders';
 import { FinalLedger } from './components/FinalLedger';
 import { SpreadsheetView } from './components/SpreadsheetView';
@@ -125,6 +126,7 @@ function App() {
         setSyncStatus('synced');
       } catch (error) {
         setSyncStatus('error');
+        setIsInitialized(true); // Allow app to boot even with sync error
         showToast('System synchronization error', 'error');
       }
     };
@@ -273,15 +275,15 @@ function App() {
     document.documentElement.classList.toggle('dark', newTheme === 'dark');
   };
 
-  if (!isInitialized) return <div className="h-screen w-full flex items-center justify-center bg-slate-950 text-indigo-400 font-bold">Initializing ERP...</div>;
+  if (!isInitialized) return <div className="h-[100dvh] w-full flex items-center justify-center bg-slate-950 text-indigo-400 font-bold">Initializing ERP...</div>;
 
   return (
-    <div className="flex h-screen bg-slate-100 dark:bg-slate-950 flex-col overflow-hidden">
+    <div className="flex h-[100dvh] bg-slate-100 dark:bg-slate-950 flex-col overflow-hidden pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
       {showTutorial && <TutorialGuide view={currentView} onClose={() => setShowTutorial(false)} />}
       
       {/* Mobile Top Bar */}
-      <header className="fixed top-0 left-0 right-0 h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 z-30 flex items-center justify-between px-4 shadow-sm md:hidden">
+      <header className="fixed top-[env(safe-area-inset-top)] left-[env(safe-area-inset-left)] right-[env(safe-area-inset-right)] h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 z-30 flex items-center justify-between px-4 shadow-sm md:hidden">
          <button onClick={() => setIsSidebarOpen(true)} className="p-3 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg active:scale-95 transition-all">
             <Menu size={24} />
          </button>
@@ -293,7 +295,7 @@ function App() {
       {isSidebarOpen && (
         <div className="fixed inset-0 z-50 md:hidden">
           <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm" onClick={() => setIsSidebarOpen(false)} />
-          <div className="absolute top-0 left-0 bottom-0 w-[280px] bg-white dark:bg-slate-900 animate-in slide-in-from-left duration-300 shadow-2xl overflow-y-auto">
+          <div className="absolute top-[env(safe-area-inset-top)] left-[env(safe-area-inset-left)] bottom-[env(safe-area-inset-bottom)] w-[280px] bg-white dark:bg-slate-900 animate-in slide-in-from-left duration-300 shadow-2xl overflow-y-auto">
              <Sidebar 
                currentView={currentView} 
                onViewChange={(view) => { setCurrentView(view); setIsSidebarOpen(false); }} 
@@ -309,7 +311,7 @@ function App() {
       )}
 
       {/* Desktop Sidebar (Persistent) */}
-      <div className="hidden md:flex h-full fixed left-0 top-0 w-64 z-20">
+      <div className="hidden md:flex h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom))] fixed left-[env(safe-area-inset-left)] top-[env(safe-area-inset-top)] w-64 z-20">
          <Sidebar 
            currentView={currentView} 
            onViewChange={setCurrentView} 
@@ -321,8 +323,8 @@ function App() {
          />
       </div>
 
-      <main className="flex-1 overflow-y-auto pt-16 md:pt-0 md:pl-64 custom-scrollbar">
-        <div className="p-4 md:p-8 pb-32 max-w-full mx-auto">
+      <main className="flex-1 overflow-y-auto overflow-x-hidden pt-16 md:pt-0 md:pl-64 custom-scrollbar">
+        <div className={`p-4 md:p-8 max-w-full mx-auto ${['ai_accountant', 'advisor'].includes(currentView) ? 'pb-4' : 'pb-32'}`}>
           {currentView === 'dashboard' && <Dashboard products={products} sales={sales} customers={customers} expenses={expenses} returns={returns} onNavigate={setCurrentView} theme={theme} businessProfile={businessProfile} />}
           {currentView === 'inventory' && <Inventory products={products} suppliers={suppliers} onAddProduct={(p)=> { setProducts([...products, p]); ApiService.pushUpdate('products', [...products, p]); }} onUpdateProduct={(p)=>{ const u = products.map(x=>x.id===p.id?p:x); setProducts(u); ApiService.pushUpdate('products', u); }} onDeleteProduct={(id)=> { const u = products.filter(x=>x.id!==id); setProducts(u); ApiService.pushUpdate('products', u); }} notify={showToast} />}
           {currentView === 'procurement' && <PurchaseOrders purchaseOrders={purchaseOrders} products={products} suppliers={suppliers} onCreatePO={(po)=>{ const u = [po, ...purchaseOrders]; setPurchaseOrders(u); ApiService.pushUpdate('purchaseOrders', u); }} onReceivePO={(po)=>{
@@ -356,7 +358,12 @@ function App() {
           {currentView === 'returns' && <Returns returns={returns} sales={sales} onAdd={handleAddReturn} onUpdateStatus={handleUpdateReturnStatus} onAddExpense={handleAddExpense} preSelectedOrderId={preSelectedOrderId} />}
           {currentView === 'reports' && <Reports sales={sales} products={products} customers={customers} expenses={expenses} returns={returns} theme={theme} />}
           {currentView === 'calculator' && <PriceCalculator products={products} onUpdateProduct={(p)=>{ const u = products.map(x=>x.id===p.id?p:x); setProducts(u); ApiService.pushUpdate('products', u); }} />}
-          {currentView === 'advisor' && <Advisor products={products} sales={sales} />}
+          <div className={currentView === 'advisor' ? 'block' : 'hidden'}>
+            <Advisor products={products} sales={sales} isActive={currentView === 'advisor'} />
+          </div>
+          <div className={currentView === 'ai_accountant' ? 'block' : 'hidden'}>
+            <AIAccountant sales={sales} expenses={expenses} returns={returns} purchaseOrders={purchaseOrders} isActive={currentView === 'ai_accountant'} />
+          </div>
           {currentView === 'tester' && <WorkflowTester 
             onAddProduct={(p)=> { setProducts(prev => { const u = [p, ...prev]; ApiService.pushUpdate('products', u); return u; }); }} 
             onAddSale={handleAddSale} 
@@ -397,7 +404,7 @@ function App() {
             onDeletePO={(id)=> { setPurchaseOrders(prev => { const u = prev.filter(x=>x.id!==id); ApiService.pushUpdate('purchaseOrders', u); return u; }); }}
           />}
           {currentView === 'audit' && <AuditTrail logs={logs} />}
-          {currentView === 'settings' && <Settings products={products} sales={sales} customers={customers} suppliers={suppliers} expenses={expenses} returns={returns} onFactoryReset={()=>{ ApiService.clearAll(); localStorage.clear(); window.location.reload(); }} onPurgeSales={()=>{ setSales([]); ApiService.pushUpdate('sales', []); }} onPurgeInventory={()=>{ setProducts([]); ApiService.pushUpdate('products', []); }} businessProfile={businessProfile} onUpdateProfile={(p)=>{ setBusinessProfile(p); localStorage.setItem('hub_profile', JSON.stringify(p)); }} onUpdatePin={(p)=>setPin(p)} />}
+          {currentView === 'settings' && <Settings products={products} sales={sales} customers={customers} suppliers={suppliers} expenses={expenses} returns={returns} onFactoryReset={async ()=>{ await ApiService.clearAll(); localStorage.clear(); window.location.reload(); }} onPurgeSales={()=>{ setSales([]); ApiService.pushUpdate('sales', []); }} onPurgeInventory={()=>{ setProducts([]); ApiService.pushUpdate('products', []); }} businessProfile={businessProfile} onUpdateProfile={(p)=>{ setBusinessProfile(p); localStorage.setItem('hub_profile', JSON.stringify(p)); }} onUpdatePin={(p)=>setPin(p)} />}
         </div>
       </main>
     </div>

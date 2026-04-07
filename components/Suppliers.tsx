@@ -131,42 +131,42 @@ export const Suppliers: React.FC<SuppliersProps> = ({
       </div>
 
       {isModalOpen && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-[3rem] shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200 border border-slate-200 dark:border-slate-800">
-            <div className="px-10 py-8 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/80 flex justify-between items-center">
-              <h3 className="text-2xl font-serif font-bold text-slate-800 dark:text-white">{editingId ? 'Update Partner' : 'New Partner Profile'}</h3>
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-2 sm:p-4 overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 rounded-[2rem] sm:rounded-[3rem] shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200 border border-slate-200 dark:border-slate-800 my-auto">
+            <div className="px-6 sm:px-10 py-6 sm:py-8 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/80 flex justify-between items-center shrink-0">
+              <h3 className="text-xl sm:text-2xl font-serif font-bold text-slate-800 dark:text-white">{editingId ? 'Update Partner' : 'New Partner Profile'}</h3>
               <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600 p-2 rounded-full transition-colors"><X size={24}/></button>
             </div>
-            <form onSubmit={handleSubmit} className="p-10 space-y-8">
-              <div className="grid grid-cols-1 gap-6">
+            <form onSubmit={handleSubmit} className="p-6 sm:p-10 space-y-4 sm:space-y-8">
+              <div className="grid grid-cols-1 gap-4 sm:gap-6">
                 <div>
                   <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1.5 ml-1">Company Entity</label>
-                  <input required className="w-full p-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/10 dark:text-white font-bold transition-all" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="e.g. Royal Decor Ltd" />
+                  <input required className="w-full p-3 sm:p-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl sm:rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/10 dark:text-white font-bold transition-all text-sm sm:text-base" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="e.g. Royal Decor Ltd" />
                 </div>
                 <div>
                   <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1.5 ml-1">Sourcing Domain</label>
-                  <select className="w-full p-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/10 font-bold dark:text-white cursor-pointer" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}>
+                  <select className="w-full p-3 sm:p-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl sm:rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/10 font-bold dark:text-white cursor-pointer text-sm sm:text-base" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}>
                     {CATEGORIES.filter(c => c !== 'All').map(c => <option key={c}>{c}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1.5 ml-1">Primary Contact Name</label>
-                  <input required className="w-full p-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/10 dark:text-white font-bold transition-all" value={formData.contactPerson} onChange={e => setFormData({...formData, contactPerson: e.target.value})} />
+                  <input required className="w-full p-3 sm:p-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl sm:rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/10 dark:text-white font-bold transition-all text-sm sm:text-base" value={formData.contactPerson} onChange={e => setFormData({...formData, contactPerson: e.target.value})} />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1.5 ml-1">Email Terminal</label>
-                    <input type="email" required className="w-full p-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/10 dark:text-white font-bold transition-all" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
+                    <input type="email" required className="w-full p-3 sm:p-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl sm:rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/10 dark:text-white font-bold transition-all text-sm sm:text-base" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
                   </div>
                   <div>
                     <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1.5 ml-1">Phone</label>
-                    <input type="tel" required className="w-full p-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/10 dark:text-white font-bold transition-all" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} />
+                    <input type="tel" required className="w-full p-3 sm:p-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl sm:rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/10 dark:text-white font-bold transition-all text-sm sm:text-base" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} />
                   </div>
                 </div>
               </div>
-              <div className="pt-6 flex gap-4">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-5 text-slate-500 dark:text-slate-400 font-bold hover:bg-slate-100 dark:hover:bg-slate-800 rounded-3xl transition-colors">Discard</button>
-                <button type="submit" className="flex-1 py-5 bg-indigo-600 text-white rounded-3xl font-bold shadow-2xl shadow-indigo-500/30 transition-all hover:bg-indigo-700 active:scale-95">
+              <div className="pt-4 sm:pt-6 flex flex-col sm:flex-row gap-3 sm:gap-4">
+                <button type="button" onClick={() => setIsModalOpen(false)} className="order-2 sm:order-1 flex-1 py-4 sm:py-5 text-slate-500 dark:text-slate-400 font-bold hover:bg-slate-100 dark:hover:bg-slate-800 rounded-2xl sm:rounded-3xl transition-colors">Discard</button>
+                <button type="submit" className="order-1 sm:order-2 flex-1 py-4 sm:py-5 bg-indigo-600 text-white rounded-2xl sm:rounded-3xl font-bold shadow-2xl shadow-indigo-500/30 transition-all hover:bg-indigo-700 active:scale-95">
                   {editingId ? 'Save Profile' : 'Confirm Registration'}
                 </button>
               </div>

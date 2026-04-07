@@ -73,7 +73,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <TrendingUp size={18} />
             <h3 className="text-[10px] font-black uppercase tracking-widest text-indigo-300">Net Profit</h3>
           </div>
-          <p className="text-3xl font-serif font-bold">৳{math.netProfit.toLocaleString()}</p>
+          <p className="text-2xl sm:text-3xl font-serif font-bold">৳{math.netProfit.toLocaleString()}</p>
           <p className="text-[10px] text-slate-500 mt-2">Sales Profit - Shop Costs</p>
         </div>
 
@@ -82,7 +82,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <DollarSign size={18} />
             <h3 className="text-[10px] font-black uppercase tracking-widest">Net Revenue</h3>
           </div>
-          <p className="text-3xl font-serif font-bold dark:text-white">৳{math.netRevenue.toLocaleString()}</p>
+          <p className="text-2xl sm:text-3xl font-serif font-bold dark:text-white">৳{math.netRevenue.toLocaleString()}</p>
           <p className="text-[10px] text-slate-400 mt-2">Revenue Flow - Shop Costs</p>
         </div>
 
@@ -91,7 +91,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <Receipt size={18} />
             <h3 className="text-[10px] font-black uppercase tracking-widest text-red-400">Shop Expenses</h3>
           </div>
-          <p className="text-3xl font-serif font-bold dark:text-white">৳{math.monthlyExpenses.toLocaleString()}</p>
+          <p className="text-2xl sm:text-3xl font-serif font-bold dark:text-white">৳{math.monthlyExpenses.toLocaleString()}</p>
           <p className="text-[10px] text-slate-400 mt-2">Bills, Rent, and Losses</p>
         </div>
 
@@ -100,7 +100,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <Package size={18} />
             <h3 className="text-[10px] font-black uppercase tracking-widest">Stock Assets</h3>
           </div>
-          <p className="text-3xl font-serif font-bold dark:text-white">৳{inventoryValue.toLocaleString()}</p>
+          <p className="text-2xl sm:text-3xl font-serif font-bold dark:text-white">৳{inventoryValue.toLocaleString()}</p>
           <p className="text-[10px] text-slate-400 mt-2">Current Investment Value</p>
         </div>
       </div>
@@ -130,9 +130,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
                  <p className="text-xl font-bold text-red-600 font-mono">-৳{math.monthlyExpenses.toLocaleString()}</p>
               </div>
 
-              <div className="flex justify-between items-center p-6 bg-indigo-600 text-white rounded-[2rem] shadow-xl">
-                 <p className="font-black uppercase tracking-[0.2em] text-xs">Monthly Net Profit</p>
-                 <p className="text-3xl font-serif font-bold">৳{math.netProfit.toLocaleString()}</p>
+              <div className="flex justify-between items-center p-4 sm:p-6 bg-indigo-600 text-white rounded-[2rem] shadow-xl">
+                 <p className="font-black uppercase tracking-[0.2em] text-[10px] sm:text-xs">Monthly Net Profit</p>
+                 <p className="text-2xl sm:text-3xl font-serif font-bold">৳{math.netProfit.toLocaleString()}</p>
               </div>
            </div>
         </div>

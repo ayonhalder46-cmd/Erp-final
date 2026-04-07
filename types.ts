@@ -129,7 +129,8 @@ export type ViewState =
   | 'advisor' 
   | 'audit'
   | 'spreadsheet'
-  | 'procurement';
+  | 'procurement'
+  | 'ai_accountant';
 
 export type SyncStatus = 'synced' | 'syncing' | 'error' | 'offline';
 

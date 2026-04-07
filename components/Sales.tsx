@@ -142,6 +142,29 @@ export const Sales: React.FC<SalesProps> = ({
   });
 
   const [editingSaleId, setEditingSaleId] = useState<string | null>(null);
+  const [isAddingCustomer, setIsAddingCustomer] = useState(false);
+  const [newCustomer, setNewCustomer] = useState({ name: '', phone: '', address: '' });
+
+  const handleQuickAddCustomer = () => {
+    if (!newCustomer.name || !newCustomer.phone) {
+      if (notify) notify('Name and phone are required', 'error');
+      return;
+    }
+    const customer: Customer = {
+      id: Date.now().toString(),
+      name: newCustomer.name,
+      phone: newCustomer.phone,
+      address: newCustomer.address,
+      totalSpent: 0,
+      lastPurchaseDate: new Date().toISOString().split('T')[0],
+      tier: 'Bronze'
+    };
+    onAddCustomer(customer);
+    setNewSale({ ...newSale, customerId: customer.id });
+    setIsAddingCustomer(false);
+    setNewCustomer({ name: '', phone: '', address: '' });
+    if (notify) notify('Customer added successfully', 'success');
+  };
 
   const selectedCustomer = useMemo(() => 
     customers.find(c => c.id === newSale.customerId), 
@@ -342,11 +365,11 @@ export const Sales: React.FC<SalesProps> = ({
       </div>
 
       {isModalOpen && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/90 p-2 md:p-4">
-          <div className="bg-slate-100 dark:bg-slate-900 w-full h-full max-w-[1400px] rounded-[2rem] overflow-hidden flex flex-col shadow-2xl border border-slate-200 dark:border-slate-800">
-            <div className="md:hidden flex p-4 pb-0 gap-2 shrink-0">
-              <button onClick={() => setMobileTab('catalog')} className={`flex-1 py-4 text-xs font-black uppercase tracking-widest rounded-t-2xl transition-all ${mobileTab === 'catalog' ? 'bg-white dark:bg-slate-800 text-indigo-600 shadow-sm' : 'text-slate-500'}`}>Items</button>
-              <button onClick={() => setMobileTab('cart')} className={`flex-1 py-4 text-xs font-black uppercase tracking-widest rounded-t-2xl transition-all flex justify-center gap-2 ${mobileTab === 'cart' ? 'bg-white dark:bg-slate-800 text-indigo-600 shadow-sm' : 'text-slate-500'}`}>Checkout ({newSale.items?.length})</button>
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/90 p-0 sm:p-2 md:p-4 overflow-hidden">
+          <div className="bg-slate-100 dark:bg-slate-900 w-full h-full max-w-[1400px] sm:rounded-[2rem] overflow-hidden flex flex-col shadow-2xl border-none sm:border sm:border-slate-200 dark:sm:border-slate-800">
+            <div className="md:hidden flex p-3 sm:p-4 pb-0 gap-2 shrink-0 bg-slate-50 dark:bg-slate-950/50">
+              <button onClick={() => setMobileTab('catalog')} className={`flex-1 py-3 text-[10px] font-black uppercase tracking-widest rounded-t-xl transition-all ${mobileTab === 'catalog' ? 'bg-white dark:bg-slate-800 text-indigo-600 shadow-sm' : 'text-slate-500'}`}>Catalog</button>
+              <button onClick={() => setMobileTab('cart')} className={`flex-1 py-3 text-[10px] font-black uppercase tracking-widest rounded-t-xl transition-all flex justify-center gap-2 ${mobileTab === 'cart' ? 'bg-white dark:bg-slate-800 text-indigo-600 shadow-sm' : 'text-slate-500'}`}>Cart ({newSale.items?.length})</button>
             </div>
 
             <div className="flex-1 overflow-hidden flex flex-col md:flex-row relative">
@@ -400,11 +423,27 @@ export const Sales: React.FC<SalesProps> = ({
                       </div>
 
                       <div>
-                          <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Client Selection</label>
-                          <select className="w-full h-14 px-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold text-sm outline-none appearance-none" value={newSale.customerId} onChange={e => setNewSale({...newSale, customerId: e.target.value})}>
-                            <option value="">-- Choose Customer --</option>
-                            {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                          </select>
+                          <div className="flex justify-between items-center mb-1">
+                              <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Client Selection</label>
+                              <button type="button" onClick={() => setIsAddingCustomer(!isAddingCustomer)} className="text-[10px] font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-1">
+                                  {isAddingCustomer ? <X size={12} /> : <Plus size={12} />}
+                                  {isAddingCustomer ? 'Cancel' : 'New Customer'}
+                              </button>
+                          </div>
+                          
+                          {isAddingCustomer ? (
+                              <div className="bg-indigo-50 dark:bg-indigo-900/10 p-4 rounded-xl border border-indigo-100 dark:border-indigo-500/20 space-y-3">
+                                  <input type="text" placeholder="Customer Name *" className="w-full p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold outline-none" value={newCustomer.name} onChange={e => setNewCustomer({...newCustomer, name: e.target.value})} />
+                                  <input type="text" placeholder="Phone Number *" className="w-full p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold outline-none" value={newCustomer.phone} onChange={e => setNewCustomer({...newCustomer, phone: e.target.value})} />
+                                  <input type="text" placeholder="Address (Optional)" className="w-full p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold outline-none" value={newCustomer.address} onChange={e => setNewCustomer({...newCustomer, address: e.target.value})} />
+                                  <button type="button" onClick={handleQuickAddCustomer} className="w-full py-3 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 transition-colors">Save & Select Customer</button>
+                              </div>
+                          ) : (
+                              <select className="w-full h-14 px-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold text-sm outline-none appearance-none" value={newSale.customerId} onChange={e => setNewSale({...newSale, customerId: e.target.value})}>
+                                <option value="">-- Choose Customer --</option>
+                                {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                              </select>
+                          )}
                       </div>
                   </div>
 
@@ -428,8 +467,20 @@ export const Sales: React.FC<SalesProps> = ({
                 </div>
 
                 <div className="p-6 bg-slate-50 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="text-[9px] font-black uppercase text-slate-400 tracking-widest ml-1 block mb-1">Discount (৳)</label>
+                            <input type="number" min="0" className="w-full p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold outline-none" value={newSale.discountAmount || ''} onChange={e => setNewSale({...newSale, discountAmount: Number(e.target.value)})} />
+                        </div>
+                        <div>
+                            <label className="text-[9px] font-black uppercase text-slate-400 tracking-widest ml-1 block mb-1">Delivery (৳)</label>
+                            <input type="number" min="0" className="w-full p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold outline-none" value={newSale.deliveryCharge || ''} onChange={e => setNewSale({...newSale, deliveryCharge: Number(e.target.value)})} />
+                        </div>
+                    </div>
                     <div className="space-y-2">
                         <div className="flex justify-between text-slate-500 text-xs"><span>Order Total</span><span className="font-bold">৳{currentSubtotal.toLocaleString()}</span></div>
+                        {!!newSale.discountAmount && <div className="flex justify-between text-emerald-500 text-xs"><span>Discount</span><span className="font-bold">-৳{newSale.discountAmount.toLocaleString()}</span></div>}
+                        {!!newSale.deliveryCharge && <div className="flex justify-between text-slate-500 text-xs"><span>Delivery</span><span className="font-bold">+৳{newSale.deliveryCharge.toLocaleString()}</span></div>}
                         <div className="flex justify-between items-center text-xs font-black uppercase text-indigo-600 pt-2 border-t border-slate-200 dark:border-slate-800">
                             <span>Final Amount</span>
                             <span className="text-2xl font-serif">৳{currentTotal.toLocaleString()}</span>

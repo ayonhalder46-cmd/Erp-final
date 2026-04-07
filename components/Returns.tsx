@@ -211,8 +211,7 @@ export const Returns: React.FC<ReturnsProps> = ({ returns, sales, onAdd, onUpdat
         />
       </div>
 
-      <div className="bg-white dark:bg-slate-900/60 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm backdrop-blur-sm">
-        <div className="overflow-x-auto">
+      <div className="bg-white dark:bg-slate-900/60 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm backdrop-blur-sm responsive-table-container">
           <table className="w-full text-left text-sm whitespace-nowrap">
             <thead className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700">
               <tr>
@@ -277,20 +276,19 @@ export const Returns: React.FC<ReturnsProps> = ({ returns, sales, onAdd, onUpdat
               )}
             </tbody>
           </table>
-        </div>
       </div>
 
       {isModalOpen && (
-        <div className="fixed inset-0 z-[100] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-           <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-[2.5rem] p-10 shadow-2xl animate-in zoom-in-95 border border-slate-200 dark:border-slate-800 max-h-[90vh] overflow-y-auto">
-              <div className="flex justify-between items-center mb-8">
+        <div className="fixed inset-0 z-[100] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+           <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-[2rem] sm:rounded-[2.5rem] p-6 sm:p-10 shadow-2xl animate-in zoom-in-95 border border-slate-200 dark:border-slate-800 my-auto">
+              <div className="flex justify-between items-center mb-6 sm:mb-8 shrink-0">
                 <div>
-                  <h3 className="text-2xl font-serif font-bold text-slate-900 dark:text-white">Process Return</h3>
-                  <p className="text-slate-500 dark:text-slate-400 text-xs mt-1">Adjust order revenue for returned items.</p>
+                  <h3 className="text-xl sm:text-2xl font-serif font-bold text-slate-900 dark:text-white">Process Return</h3>
+                  <p className="text-slate-500 dark:text-slate-400 text-[10px] sm:text-xs mt-1">Adjust order revenue for returned items.</p>
                 </div>
                 <button onClick={() => { setIsModalOpen(false); resetForm(); }} className="p-2 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-red-500 transition-colors"><X size={20}/></button>
               </div>
-              <form onSubmit={handleSubmit} className="space-y-6">
+              <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
                  <div>
                     <label className="block text-[10px] uppercase font-black text-slate-400 tracking-widest mb-1.5 ml-1">Order Reference (Delivered Only)</label>
                     <div className="relative">
